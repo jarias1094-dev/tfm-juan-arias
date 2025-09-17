@@ -43,7 +43,14 @@ PIPELINE_SA = "svc-tfm-pipeline-executor@pipeline-weather-flights.iam.gserviceac
 # Configuración de Dataproc Serverless
 BATCH_CONFIG = {
     'runtime_config': {
-        'version': '1.1'
+        'version': '1.1',
+        'properties': {
+            'spark.executor.instances': '1',
+            'spark.executor.cores': '1',
+            'spark.executor.memory': '2g',
+            'spark.driver.memory': '1g',
+            'spark.driver.cores': '1'
+        }
     },
     'environment_config': {
         'execution_config': {
@@ -109,8 +116,8 @@ weather_sensor = DataprocBatchSensor(
     batch_id="weather-{{ ts_nodash | lower | replace('t','-') | replace('z','') }}",
     project_id=PROJECT_ID,
     region=REGION,
-    poke_interval=60,
-    timeout=1800,
+    poke_interval=30,
+    timeout=900,
     dag=weather_dag,
 )
 

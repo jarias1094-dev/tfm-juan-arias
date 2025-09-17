@@ -110,6 +110,11 @@ class GeographyExtractor:
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
             .config("spark.jars.packages", "com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.32.2") \
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
+            .config("spark.executor.instances", "1") \
+            .config("spark.executor.cores", "1") \
+            .config("spark.executor.memory", "2g") \
+            .config("spark.driver.memory", "1g") \
+            .config("spark.driver.cores", "1") \
             .getOrCreate()
         
         self.project_id = PROJECT_ID

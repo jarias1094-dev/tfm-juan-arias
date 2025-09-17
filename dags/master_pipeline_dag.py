@@ -73,7 +73,7 @@ trigger_geography = TriggerDagRunOperator(
     task_id='trigger_geography_pipeline',
     trigger_dag_id='geography_data_pipeline',
     wait_for_completion=True,
-    poke_interval=60,
+    poke_interval=30,
     dag=master_dag
 )
 
@@ -81,7 +81,7 @@ trigger_weather = TriggerDagRunOperator(
     task_id='trigger_weather_pipeline',
     trigger_dag_id='weather_data_pipeline',
     wait_for_completion=True,
-    poke_interval=60,
+    poke_interval=30,
     dag=master_dag
 )
 
@@ -89,7 +89,7 @@ trigger_flights = TriggerDagRunOperator(
     task_id='trigger_flights_pipeline',
     trigger_dag_id='flights_data_pipeline',
     wait_for_completion=True,
-    poke_interval=60,
+    poke_interval=30,
     dag=master_dag
 )
 
