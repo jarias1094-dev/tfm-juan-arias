@@ -1,0 +1,42 @@
+# Core dependencies for data pipeline
+pyspark==3.5.0
+google-cloud-bigquery==3.13.0
+google-cloud-storage==2.10.0
+google-cloud-dataproc==5.4.4
+
+# API clients and HTTP requests
+requests==2.31.0
+urllib3==2.0.7
+
+# Data processing and manipulation
+pandas==2.1.4
+numpy==1.24.4
+
+# Date and time handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Configuration and environment management
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Logging and monitoring
+structlog==23.2.0
+
+# JSON handling
+jsonschema==4.20.0
+
+# Optional: For enhanced data validation
+pydantic==2.5.2
+
+# Optional: For better error handling and retries
+tenacity==8.2.3
+
+# Optional: For data quality checks
+great-expectations==0.18.5
+
+# Development and testing (optional)
+pytest==7.4.3
+pytest-cov==4.1.0
+black==23.11.0
+flake8==6.1.0

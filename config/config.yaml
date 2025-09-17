@@ -1,0 +1,194 @@
+# Configuration file for Graduation Pipeline
+# Copy this file to config.yaml and update with your actual values
+
+# API Configuration
+apis:
+  openweather:
+    base_url: "http://api.openweathermap.org/data/2.5/weather"
+    api_key: "${OPENWEATHER_API_KEY}"  # Set as environment variable
+    rate_limit: 60  # requests per minute
+    timeout: 30  # seconds
+    
+  opensky:
+    base_url: "https://opensky-network.org/api"
+    username: "${OPENSKY_USERNAME}"  # Optional, for higher rate limits
+    password: "${OPENSKY_PASSWORD}"  # Optional, for higher rate limits
+    rate_limit: 10  # requests per minute (free tier)
+    timeout: 30  # seconds
+    
+  geodb:
+    base_url: "http://geodb-free-service.wirefreethought.com/v1"
+    api_key: "${GEODB_API_KEY}"  # Optional, for higher rate limits
+    rate_limit: 5  # requests per minute (free tier)
+    timeout: 30  # seconds
+
+# Google Cloud Configuration
+gcp:
+  project_id: "${GCP_PROJECT_ID}"
+  region: "us-central1"
+  zone: "us-central1-a"
+  
+  # BigQuery Configuration
+  bigquery:
+    dataset_weather: "weather_data"
+    dataset_flights: "flight_data"
+    dataset_geography: "geography_data"
+    
+    # Table configurations
+    tables:
+      weather:
+        name: "current_weather"
+        partition_field: "extraction_date"
+        partition_type: "DAY"
+        clustering_fields: ["airport_code", "country_code"]
+        
+      flights:
+        name: "current_flights"
+        partition_field: "extraction_date"
+        partition_type: "DAY"
+        clustering_fields: ["origin_country", "on_ground"]
+        
+      cities:
+        name: "cities_info"
+        partition_field: "extraction_date"
+        partition_type: "DAY"
+        clustering_fields: ["country_code", "population_category"]
+        
+      countries:
+        name: "countries_info"
+        partition_field: "extraction_date"
+        partition_type: "DAY"
+        clustering_fields: ["continent"]
+
+# Dataproc Configuration
+dataproc:
+  cluster_name: "graduation-pipeline-cluster"
+  machine_type: "n1-standard-2"
+  num_workers: 2
+  num_preemptible_workers: 1
+  image_version: "2.0-debian10"
+  
+  # Spark Configuration
+  spark:
+    executor_memory: "2g"
+    executor_cores: 2
+    driver_memory: "1g"
+    max_result_size: "1g"
+    
+  # Properties for optimization
+  properties:
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"
+    spark.serializer: "org.apache.spark.serializer.KryoSerializer"
+
+# Cloud Storage Configuration
+storage:
+  bucket_name: "graduation-pipeline-code"
+  scripts_path: "scripts/"
+  data_path: "data/"
+  logs_path: "logs/"
+
+# Data Processing Configuration
+processing:
+  # Weather data settings
+  weather:
+    airports:
+      - code: "JFK"
+        name: "John F. Kennedy International Airport"
+        lat: 40.6413
+        lon: -73.7781
+      - code: "LAX"
+        name: "Los Angeles International Airport"
+        lat: 33.9425
+        lon: -118.4081
+      - code: "LHR"
+        name: "London Heathrow Airport"
+        lat: 51.4700
+        lon: -0.4543
+      - code: "CDG"
+        name: "Charles de Gaulle Airport"
+        lat: 49.0097
+        lon: 2.5479
+      - code: "NRT"
+        name: "Narita International Airport"
+        lat: 35.7720
+        lon: 140.3928
+      - code: "SYD"
+        name: "Sydney Kingsford Smith Airport"
+        lat: -33.9399
+        lon: 151.1753
+      - code: "FRA"
+        name: "Frankfurt Airport"
+        lat: 50.0379
+        lon: 8.5622
+      - code: "AMS"
+        name: "Amsterdam Airport Schiphol"
+        lat: 52.3105
+        lon: 4.7683
+      - code: "MAD"
+        name: "Madrid-Barajas Airport"
+        lat: 40.4983
+        lon: -3.5676
+      - code: "FCO"
+        name: "Leonardo da Vinci International Airport"
+        lat: 41.8003
+        lon: 12.2389
+    
+  # Flight data settings
+  flights:
+    max_flights_per_request: 1000
+    include_ground_flights: false
+    min_altitude_ft: 100  # Minimum altitude to consider as airborne
+    
+  # Geography data settings
+  geography:
+    major_countries:
+      - "US"  # United States
+      - "GB"  # United Kingdom
+      - "FR"  # France
+      - "DE"  # Germany
+      - "IT"  # Italy
+      - "ES"  # Spain
+      - "NL"  # Netherlands
+      - "JP"  # Japan
+      - "CN"  # China
+      - "IN"  # India
+      - "BR"  # Brazil
+      - "CA"  # Canada
+      - "AU"  # Australia
+      - "MX"  # Mexico
+      - "AR"  # Argentina
+      - "RU"  # Russia
+      - "KR"  # South Korea
+      - "SG"  # Singapore
+      - "TH"  # Thailand
+      - "MY"  # Malaysia
+    
+    cities_per_country: 20  # Top N cities per country
+    nearby_cities_radius_km: 50
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/pipeline.log"
+  max_file_size: "10MB"
+  backup_count: 5
+
+# Monitoring and Alerting
+monitoring:
+  enable_metrics: true
+  metrics_interval: 300  # seconds
+  alert_on_failure: true
+  notification_email: "${NOTIFICATION_EMAIL}"
+
+# Data Quality Configuration
+data_quality:
+  enable_validation: true
+  min_records_threshold: 10
+  max_null_percentage: 50
+  required_fields:
+    weather: ["airport_code", "temperature", "extraction_timestamp"]
+    flights: ["icao24", "longitude", "latitude", "extraction_timestamp"]
+    geography: ["city_name", "country_code", "extraction_timestamp"]
