@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 Geography Data Extraction Script for GeoDB Cities API via RapidAPI
-Extracts geographical information for cities, countries, and regions using GeoDB API
-Stores processed data in BigQuery with proper authentication via Secret Manager
 """
 
 import os
@@ -49,7 +47,7 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"❌ Failed to load credentials from Secret Manager: {e}")
+        logger.error(f"Failed to load credentials from Secret Manager: {e}")
         logger.error(f"   Make sure the secret exists: gcloud secrets create GEODB_API_KEY --data-file=-")
         raise ValueError(f"Could not load GeoDB credentials from Secret Manager: {e}")
 
@@ -66,6 +64,8 @@ def load_credentials():
                 'geodb': credentials
             }
         except Exception as e:
+            logger.error(f"Failed to load credentials from Secret Manager: {e}")
+            raise ValueError(f"Could not load GeoDB credentials from Secret Manager: {e}")
         
         # Fallback to environment variables
         geodb_api_key = os.getenv('GEODB_API_KEY')
@@ -97,7 +97,6 @@ class GeographyExtractor:
     """Extract geographical data from GeoDB Cities API via RapidAPI"""
     
     def __init__(self):
-        # Load credentials from Secret Manager or fallback options
         credentials = load_credentials()
         
         # Get GeoDB API key
@@ -113,7 +112,6 @@ class GeographyExtractor:
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
             .getOrCreate()
         
-        # BigQuery configuration
         self.project_id = PROJECT_ID
         self.dataset_id = DATASET_ID
         self.table_id = 'geography_places'
@@ -126,7 +124,6 @@ class GeographyExtractor:
         import time
         
         try:
-            # For BASIC plan, maximum 10 results per request
             batch_size = min(10, limit)  # BASIC plan limit: 10 results max
             all_places = []
             offset = 0
@@ -137,7 +134,7 @@ class GeographyExtractor:
                     'limit': batch_size,
                     'offset': offset,
                     'sort': 'population',
-                    'minPopulation': 10000,  # Focus on places with reasonable population
+                    'minPopulation': 10000,
                     'types': 'CITY'  # Focus on cities
                 }
                 
@@ -153,12 +150,12 @@ class GeographyExtractor:
                     time.sleep(5)
                     continue
                 elif response.status_code == 403:
-                    logger.error(f"❌ 403 Forbidden - API key issue or subscription problem")
+                    logger.error(f"403 Forbidden - API key issue or subscription problem")
                     logger.error(f"   Response: {response.text}")
                     logger.error(f"   API Key length: {len(headers['X-RapidAPI-Key'])}")
                     return None
                 elif response.status_code != 200:
-                    logger.error(f"❌ API Error {response.status_code}: {response.text}")
+                    logger.error(f"API Error {response.status_code}: {response.text}")
                     return None
                 
                 response.raise_for_status()
@@ -188,23 +185,21 @@ class GeographyExtractor:
                 
                 all_places.extend(batch_places)
                 
-                # If we got fewer results than requested, we've reached the end
                 if len(data['data']) < batch_size:
                     break
                 
                 offset += batch_size
                 
-                # Rate limiting: wait between requests
                 if len(all_places) < limit:
                     time.sleep(2)
             
-            return all_places[:limit]  # Return only requested amount
+            return all_places[:limit]
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ API request failed: {e}")
+            logger.error(f"API request failed: {e}")
             return None
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None
 
     def get_countries(self, limit: int = 100) -> Optional[List[Dict]]:
@@ -214,7 +209,7 @@ class GeographyExtractor:
         try:
             all_countries = []
             offset = 0
-            batch_size = 10  # BASIC plan maximum
+            batch_size = 10
             
             while len(all_countries) < limit and offset < 200:  # Reasonable upper limit for countries
                 url = f"{self.base_url}/geo/countries"
@@ -229,26 +224,25 @@ class GeographyExtractor:
                 }
                 
                 
-                # Retry logic for rate limits
                 max_retries = 3
                 for attempt in range(max_retries):
                     response = requests.get(url, params=params, headers=headers, timeout=30)
                     
                     if response.status_code == 429:
-                        wait_time = 5 * (attempt + 1)  # Exponential backoff
+                        wait_time = 5 * (attempt + 1)
                         time.sleep(wait_time)
                         continue
                     elif response.status_code == 403:
-                        logger.error(f"❌ 403 Forbidden - API key issue")
+                        logger.error(f"403 Forbidden - API key issue")
                         return None
                     elif response.status_code != 200:
-                        logger.error(f"❌ API Error {response.status_code}: {response.text}")
+                        logger.error(f"API Error {response.status_code}: {response.text}")
                         return None
                     
                     response.raise_for_status()
                     break
                 else:
-                    logger.error("❌ Max retries exceeded due to rate limiting")
+                    logger.error("Max retries exceeded due to rate limiting")
                     return None
                 
                 data = response.json()
@@ -269,29 +263,26 @@ class GeographyExtractor:
                 
                 all_countries.extend(batch_countries)
                 
-                # If we got fewer results than requested, we've reached the end
                 if len(data['data']) < batch_size:
                     break
                 
                 offset += batch_size
                 
-                # Rate limiting: wait between requests
                 if len(all_countries) < limit:
                     time.sleep(2)
             
-            return all_countries[:limit]  # Return only requested amount
+            return all_countries[:limit]
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"❌ API request failed: {e}")
+            logger.error(f"API request failed: {e}")
             return None
         except Exception as e:
-            logger.error(f"❌ Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None
     
     def get_cities_by_country(self, country_code: str, limit: int = 100) -> Optional[List[Dict]]:
         """Fetch cities for a specific country"""
         try:
-            # Use the general cities endpoint with country filter
             url = f"{self.base_url}/geo/cities"
             params = {
                 'limit': limit,
@@ -341,7 +332,6 @@ class GeographyExtractor:
     def get_cities_near_coordinates(self, latitude: float, longitude: float, radius_km: int = 50, limit: int = 50) -> Optional[List[Dict]]:
         """Fetch cities near specific coordinates"""
         try:
-            # Format coordinates in ISO 6709 format (±DD.DDDD±DDD.DDDD)
             lat_str = f"{latitude:+.4f}"
             lon_str = f"{longitude:+.4f}"
             location = f"{lat_str}{lon_str}"
@@ -395,7 +385,6 @@ class GeographyExtractor:
     
     def get_major_cities_worldwide(self) -> List[Dict]:
         """Get major cities from key countries worldwide"""
-        # List of major countries to get cities from
         major_countries = [
             'US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN',
             'BR', 'CA', 'AU', 'MX', 'AR', 'RU', 'KR', 'SG', 'TH', 'MY'
@@ -404,12 +393,11 @@ class GeographyExtractor:
         all_cities = []
         
         for country_code in major_countries:
-            cities = self.get_cities_by_country(country_code, limit=20)  # Top 20 cities per country
+            cities = self.get_cities_by_country(country_code, limit=20)
             
             if cities:
                 all_cities.extend(cities)
             
-            # Add small delay to respect rate limits
             import time
             time.sleep(0.1)
         
@@ -445,7 +433,6 @@ class GeographyExtractor:
     
     def enrich_geography_data(self, df):
         """Add derived fields to geography data"""
-        # Add population category
         df = df.withColumn(
             "population_category",
             when(col("population").isNull(), "Unknown")
@@ -455,7 +442,6 @@ class GeographyExtractor:
             .otherwise("Metropolitan")
         )
         
-        # Add elevation category
         df = df.withColumn(
             "elevation_category",
             when(col("elevation_meters").isNull(), "Unknown")
@@ -466,7 +452,6 @@ class GeographyExtractor:
             .otherwise("Very High")
         )
         
-        # Add hemisphere information
         df = df.withColumn(
             "hemisphere",
             when(col("latitude") > 0, "Northern")
@@ -479,41 +464,32 @@ class GeographyExtractor:
     def extract_and_process_geography_data(self) -> None:
         """Main method to extract and process geography data"""
         
-        # For BASIC plan, use conservative limits (10 results per request max)
-        places_limit = 100  # 10 batches of 10 = 100 places total
-        countries_limit = 50   # 5 batches of 10 = 50 countries total
+        places_limit = 100
+        countries_limit = 50
         
-        # Extract places data using GeoDB API
         places_data = self.get_places(limit=places_limit)
         
         if not places_data:
-            logger.error("❌ No geography data extracted")
+            logger.error("No geography data extracted")
             return
         
         
-        # Create DataFrames
         places_schema = self.create_places_schema()
         places_df = self.spark.createDataFrame(places_data, places_schema)
         
-        # Enrich the data
         places_df = self.enrich_geography_data(places_df)
         
-        # Add partition column
         places_df = places_df.withColumn("extraction_date", col("extraction_timestamp").cast("date"))
         
         record_count = places_df.count()
         
-        # Write places to BigQuery
         self.write_places_to_bigquery(places_df)
         
-        # Wait before next API call
         import time
         time.sleep(3)
         
-        # Extract countries data
         countries_data = self.get_countries(limit=countries_limit)
         
-        # Process countries data if available
         if countries_data:
             countries_schema = self.create_countries_schema()
             countries_df = self.spark.createDataFrame(countries_data, countries_schema)
@@ -537,7 +513,7 @@ class GeographyExtractor:
             
             
         except Exception as e:
-            logger.error(f"❌ Failed to write places to BigQuery: {e}")
+            logger.error(f"Failed to write places to BigQuery: {e}")
             raise
     
     def write_countries_to_bigquery(self, df) -> None:
@@ -554,7 +530,7 @@ class GeographyExtractor:
             
             
         except Exception as e:
-            logger.error(f"❌ Failed to write countries to BigQuery: {e}")
+            logger.error(f"Failed to write countries to BigQuery: {e}")
             raise
     
     def cleanup(self):

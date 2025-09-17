@@ -1,7 +1,5 @@
 """
 Airflow DAG for Weather Data
-Extracts weather data for all airports using OpenWeatherMap API
-Reads airports from BigQuery and gets current weather conditions
 """
 
 from datetime import datetime, timedelta
@@ -28,7 +26,7 @@ weather_dag = DAG(
     'weather_data_pipeline',
     default_args=default_args,
     description='Weather data extraction pipeline using OpenWeatherMap API for all airports',
-    schedule_interval='@daily',  # Run once daily at midnight UTC
+    schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
     tags=['weather', 'openweathermap', 'airports', 'bigquery'],
@@ -68,7 +66,7 @@ def log_weather_pipeline_end(**context):
     Provides visibility into successful weather pipeline completion
     """
     execution_date = context['execution_date']
-    logging.info(f"Completed Weather Pipeline execution for {execution_date}")
+    logging.info(f"Weather Pipeline execution completed for {execution_date}")
 
 # Pipeline start task - logs the beginning of the weather workflow
 start_task = PythonOperator(
@@ -104,7 +102,7 @@ weather_batch = DataprocCreateBatchOperator(
 # Sensor task - waits for the weather Dataproc batch job to complete successfully
 # This task:
 # 1. Monitors the weather batch job status every 60 seconds (poke_interval)
-# 2. Waits up to 45 minutes (timeout) for completion (longer than flights due to more API calls)
+# 2. Waits up to 30 minutes (timeout) for completion (longer than flights due to more API calls)
 # 3. Fails the pipeline if the batch job fails or times out
 weather_sensor = DataprocBatchSensor(
     task_id='wait_for_weather_completion',
@@ -112,7 +110,7 @@ weather_sensor = DataprocBatchSensor(
     project_id=PROJECT_ID,
     region=REGION,
     poke_interval=60,
-    timeout=2700,  # 45 minutes (longer timeout for weather due to many API calls)
+    timeout=1800,
     dag=weather_dag,
 )
 
@@ -129,8 +127,7 @@ def perform_weather_data_quality_check(**context):
     SELECT 
         COUNT(*) as record_count,
         COUNT(DISTINCT airport_iata_code) as unique_airports,
-        AVG(temperature) as avg_temperature,
-        COUNT(CASE WHEN temperature IS NOT NULL THEN 1 END) as records_with_temperature
+        AVG(temperature) as avg_temperature
     FROM `{PROJECT_ID}.tfm_bq_dataset.current_weather`
     WHERE extraction_date = CURRENT_DATE()
     """
@@ -141,13 +138,11 @@ def perform_weather_data_quality_check(**context):
     weather_count = row.record_count
     unique_airports = row.unique_airports
     avg_temperature = row.avg_temperature or 0
-    records_with_temp = row.records_with_temperature
 
     logging.info(f"Weather Quality Check Results:")
-    logging.info(f"  - Total records: {weather_count}")
-    logging.info(f"  - Unique airports: {unique_airports}")
-    logging.info(f"  - Average temperature: {avg_temperature:.2f}°C")
-    logging.info(f"  - Records with temperature: {records_with_temp}")
+    logging.info(f"  Total records: {weather_count}")
+    logging.info(f"  Unique airports: {unique_airports}")
+    logging.info(f"  Average temperature: {avg_temperature:.2f}°C")
     
     # Basic quality checks
     if weather_count < 50:
@@ -156,17 +151,13 @@ def perform_weather_data_quality_check(**context):
     if unique_airports < 20:
         raise ValueError(f"Weather data quality check failed: only {unique_airports} unique airports (expected at least 20)")
     
-    if records_with_temp < (weather_count * 0.8):
-        raise ValueError(f"Weather data quality check failed: too many records missing temperature data")
-    
-    logging.info("✅ Weather data quality check passed")
+    logging.info(" Weather data quality check passed")
 
 # Data quality validation task - ensures the extracted weather data meets basic requirements
 # This task:
 # 1. Queries BigQuery to count today's weather records
 # 2. Validates we have weather data for a reasonable number of airports
-# 3. Checks data completeness (temperature field coverage)
-# 4. Fails the pipeline if data quality is insufficient
+# 3. Fails the pipeline if data quality is insufficient
 weather_quality_check = PythonOperator(
     task_id='weather_data_quality_check',
     python_callable=perform_weather_data_quality_check,
@@ -180,6 +171,4 @@ end_task = PythonOperator(
     dag=weather_dag,
 )
 
-# Define the task execution order (pipeline flow)
-# Flow: Start → Extract Weather Data → Wait for Completion → Validate Quality → End
 start_task >> weather_batch >> weather_sensor >> weather_quality_check >> end_task

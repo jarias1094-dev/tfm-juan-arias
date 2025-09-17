@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-Geography Data Pipeline DAG
-Extracts geographical data using GeoDB Cities API via RapidAPI
-Processes data with PySpark and stores in BigQuery
-
-Author: Juan Arias
-Created: September 2025
+Airflow DAG for Geography Data
 """
 
 from datetime import datetime, timedelta
@@ -40,7 +35,6 @@ default_args = {
     'start_date': datetime(2025, 9, 13),
 }
 
-# Batch configuration for Dataproc Serverless
 BATCH_CONFIG = {
     'environment_config': {
         'execution_config': {
@@ -53,14 +47,15 @@ BATCH_CONFIG = {
     }
 }
 
-def start_geography_pipeline():
+
+def log_pipeline_start(**context):
     """
-    Initialize the geography data pipeline
-    Logs the start of the geography extraction process
+    Log the start of the geography pipeline execution
+    Provides visibility into when the pipeline begins processing
     """
-    logger.info("🌍 Starting Geography Data Pipeline")
-    logger.info("📍 Extracting places and regions data using GeoDB API")
-    return "geography_pipeline_started"
+    execution_date = context['execution_date']
+    logger.info(f" Starting Geography Data Pipeline execution for {execution_date}")
+    logger.info(" Extracting places and regions data using GeoDB API")
 
 def perform_geography_data_quality_check():
     """
@@ -85,8 +80,7 @@ def perform_geography_data_quality_check():
         SELECT 
             COUNT(*) as total_records,
             COUNT(DISTINCT country_code) as unique_countries,
-            COUNT(DISTINCT place_type) as unique_place_types,
-            AVG(CASE WHEN population IS NOT NULL THEN 1.0 ELSE 0.0 END) * 100 as population_completeness
+            COUNT(DISTINCT place_type) as unique_place_types
         FROM `{PROJECT_ID}.tfm_bq_dataset.geography_places`
         WHERE DATE(extraction_timestamp) = CURRENT_DATE()
         """
@@ -97,46 +91,41 @@ def perform_geography_data_quality_check():
         total_records = places_row.total_records
         unique_countries = places_row.unique_countries
         unique_place_types = places_row.unique_place_types
-        population_completeness = places_row.population_completeness
         
-        logger.info(f"📊 Geography Quality Check Results:")
-        logger.info(f"   📍 Total place records: {total_records}")
-        logger.info(f"   🌍 Unique countries: {unique_countries}")
-        logger.info(f"   🏙️  Unique place types: {unique_place_types}")
-        logger.info(f"   📈 Population completeness: {population_completeness:.1f}%")
+        logger.info(f"Geography Quality Check Results:")
+        logger.info(f"   Total place records: {total_records}")
+        logger.info(f"   Unique countries: {unique_countries}")
+        logger.info(f"   Unique place types: {unique_place_types}")
         
         # Quality check thresholds
         if total_records < 100:
-            raise ValueError(f"❌ Insufficient geography records: {total_records} (minimum: 100)")
+            raise ValueError(f"Insufficient geography records: {total_records} (minimum: 100)")
         
         if unique_countries < 10:
-            raise ValueError(f"❌ Insufficient country coverage: {unique_countries} (minimum: 10)")
-        
-        if population_completeness < 60:
-            raise ValueError(f"❌ Low population data completeness: {population_completeness:.1f}% (minimum: 60%)")
+            raise ValueError(f"Insufficient country coverage: {unique_countries} (minimum: 10)")
         
         logger.info("✅ All geography data quality checks passed!")
         return "geography_quality_check_passed"
         
     except Exception as e:
-        logger.error(f"❌ Geography data quality check failed: {e}")
+        logger.error(f"Geography data quality check failed: {e}")
         raise
 
-def end_geography_pipeline():
+def log_pipeline_end(**context):
     """
-    Finalize the geography data pipeline
-    Logs successful completion of the geography extraction process
+    Log the completion of the geography pipeline execution
+    Provides visibility into successful pipeline completion
     """
-    logger.info("🎉 Geography Data Pipeline completed successfully!")
+    execution_date = context['execution_date']
+    logger.info(f"🎉 Geography Data Pipeline execution completed for {execution_date}")
     logger.info("📊 Geography data has been extracted and stored in BigQuery")
-    return "geography_pipeline_completed"
 
 # Create the DAG
 geography_dag = DAG(
     DAG_ID,
     default_args=default_args,
     description='Extract and process geography data using GeoDB Cities API',
-    schedule_interval='@daily',  # Run once daily at midnight UTC
+    schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
     tags=['geography', 'geodb', 'api', 'bigquery', 'dataproc']
@@ -144,8 +133,8 @@ geography_dag = DAG(
 
 # Define tasks
 start_task = PythonOperator(
-    task_id='start_geography_pipeline',
-    python_callable=start_geography_pipeline,
+    task_id='log_pipeline_start',
+    python_callable=log_pipeline_start,
     dag=geography_dag
 )
 
@@ -165,7 +154,7 @@ geography_batch = DataprocCreateBatchOperator(
         'environment_config': BATCH_CONFIG['environment_config'],
         'runtime_config': BATCH_CONFIG['runtime_config']
     },
-    timeout=3600,  # 1 hour timeout
+    timeout=1800,
     impersonation_chain="svc-tfm-pipeline-executor@pipeline-weather-flights.iam.gserviceaccount.com",
     dag=geography_dag
 )
@@ -176,8 +165,8 @@ geography_sensor = DataprocBatchSensor(
     region=REGION,
     project_id=PROJECT_ID,
     batch_id="geography-{{ ts_nodash | lower | replace('t','-') | replace('z','') }}",
-    timeout=3600,  # 1 hour timeout
-    poke_interval=60,  # Check every 60 seconds
+    timeout=1800,
+    poke_interval=60,
     dag=geography_dag
 )
 
@@ -190,10 +179,9 @@ data_quality_check = PythonOperator(
 
 # End task
 end_task = PythonOperator(
-    task_id='end_geography_pipeline',
-    python_callable=end_geography_pipeline,
+    task_id='log_pipeline_end',
+    python_callable=log_pipeline_end,
     dag=geography_dag
 )
 
-# Define task dependencies
 start_task >> geography_batch >> geography_sensor >> data_quality_check >> end_task

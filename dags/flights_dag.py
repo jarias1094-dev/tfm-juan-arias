@@ -1,5 +1,5 @@
 """
-Airflow DAG for Flights
+Airflow DAG for Flights Data
 """
 
 from datetime import datetime, timedelta
@@ -26,7 +26,7 @@ flights_dag = DAG(
     'flights_data_pipeline',
     default_args=default_args,
     description='Flight data extraction pipeline using OpenSky Network API',
-    schedule_interval='@daily',  # Run once daily at midnight UTC
+    schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
     tags=['flights', 'opensky', 'real-time', 'bigquery'],
@@ -37,6 +37,7 @@ PROJECT_ID = Variable.get("gcp_project_id", default_var="pipeline-weather-flight
 REGION = Variable.get("gcp_region", default_var="us-central1")
 BUCKET_NAME = Variable.get("storage_bucket", default_var="graduation-pipeline-code")
 
+# Used for impersonation
 PIPELINE_SA = "svc-tfm-pipeline-executor@pipeline-weather-flights.iam.gserviceaccount.com"
 
 BATCH_CONFIG = {
@@ -103,7 +104,7 @@ flights_batch = DataprocCreateBatchOperator(
 # 3. Fails the pipeline if the batch job fails or times out
 flights_sensor = DataprocBatchSensor(
     task_id='wait_for_flights_completion',
-    batch_id="flights-{{ ts_nodash | lower | replace('t','-') | replace('z','') }}",  # Same batch ID as above
+    batch_id="flights-{{ ts_nodash | lower | replace('t','-') | replace('z','') }}",
     project_id=PROJECT_ID,
     region=REGION,
     poke_interval=60,
@@ -113,13 +114,12 @@ flights_sensor = DataprocBatchSensor(
 
 def perform_flights_data_quality_check(**context):
     """
-    Perform basic data quality check for flights data
+    Perform data quality check for flights data
     Validates that we have a minimum number of flight records for the current date
     """
     from google.cloud import bigquery
     client = bigquery.Client(project=PROJECT_ID)
 
-    # Simple count check for flights data
     flights_query = f"""
     SELECT COUNT(*) as record_count
     FROM `{PROJECT_ID}.tfm_bq_dataset.current_flights`
@@ -131,13 +131,13 @@ def perform_flights_data_quality_check(**context):
 
     logging.info(f"Flights records extracted today: {flights_count}")
     
-    # Basic quality check - ensure we have minimum flight records
+    # Quality check - ensure we have minimum flight records
     if flights_count < 10:
         raise ValueError(f"Flights data quality check failed: only {flights_count} records")
     
     logging.info("✅ Flights data quality check passed")
 
-# Data quality validation task - ensures the extracted data meets basic requirements
+# Data quality validation task - ensures the extracted data meets requirements
 # This task:
 # 1. Queries BigQuery to count today's flight records
 # 2. Validates we have at least 10 records

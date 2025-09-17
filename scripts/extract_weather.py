@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 Weather Data Extraction Script for OpenWeatherMap API
-Extracts current weather data for airports using Current Weather API 2.5 (Free)
-Stores processed data in BigQuery with proper authentication via Secret Manager
 """
 
 import os
@@ -48,7 +46,7 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"❌ Failed to load credentials from Secret Manager: {e}")
+        logger.error(f"Failed to load credentials from Secret Manager: {e}")
         raise ValueError(f"Could not load OpenWeatherMap credentials from Secret Manager: {e}")
 
 def load_credentials():
@@ -96,6 +94,7 @@ class WeatherExtractor:
     
     def __init__(self):
         # Load credentials from Secret Manager or fallback options
+        # Load credentials from Secret Manager or fallback options
         credentials = load_credentials()
         
         # Get OpenWeatherMap API key
@@ -138,7 +137,6 @@ class WeatherExtractor:
             
             data = response.json()
             
-            # Transform the data to our schema using Current Weather API 2.5 structure
             main = data.get('main', {})
             weather_info = data.get('weather', [{}])[0] if data.get('weather') else {}
             wind = data.get('wind', {})
@@ -154,14 +152,14 @@ class WeatherExtractor:
                 'latitude': float(lat),
                 'longitude': float(lon),
                 'elevation_ft': airport_info.get('elevation_ft', None),
-                'timezone': None,  # Not available in free API
+                'timezone': None,
                 'timezone_offset': data.get('timezone', None),  # Timezone offset in seconds
                 'temperature': float(main.get('temp')) if main.get('temp') is not None else None,
                 'feels_like': float(main.get('feels_like')) if main.get('feels_like') is not None else None,
                 'humidity': main.get('humidity', None),
                 'pressure': main.get('pressure', None),
-                'dew_point': None,  # Not available in free API
-                'uvi': None,  # Not available in free API
+                'dew_point': None,
+                'uvi': None,
                 'cloudiness': clouds.get('all', None),
                 'visibility': data.get('visibility', None),
                 'wind_speed': float(wind.get('speed')) if wind.get('speed') is not None else None,
@@ -191,13 +189,11 @@ class WeatherExtractor:
         """Get list of airports from BigQuery airports table"""
         try:
             
-            # Read airports table from BigQuery
             airports_df = self.spark.read \
                 .format("bigquery") \
                 .option("table", f"{self.project_id}.{self.dataset_id}.airports") \
                 .load()
             
-            # Filter airports with coordinates and scheduled service
             filtered_airports_df = airports_df.filter(
                 (airports_df.latitude_deg.isNotNull()) & 
                 (airports_df.longitude_deg.isNotNull()) &
@@ -215,25 +211,20 @@ class WeatherExtractor:
                 "iso_country"
             ).orderBy("name")
             
-            # Check the count first to avoid memory issues
             airport_count = filtered_airports_df.count()
             
-            # Limit to reasonable number for weather API calls (avoid rate limits and memory issues)
             if airport_count > 500:
                 filtered_airports_df = filtered_airports_df.limit(500)
             
-            # Convert to list of dictionaries with better error handling
             try:
                 airports_data = filtered_airports_df.collect()
             except Exception as collect_error:
                 logger.error(f"❌ Error collecting airport data: {collect_error}")
-                # Try with smaller batch first
                 airports_data = filtered_airports_df.limit(100).collect()
             
             airports = []
             for i, row in enumerate(airports_data):
                 try:
-                    # Handle potential None values and data type conversions
                     airport_info = {
                         'iata_code': str(row['iata_code']) if row['iata_code'] else None,
                         'icao_code': str(row['icao_code']) if row['icao_code'] else str(row['iata_code']),
@@ -245,7 +236,6 @@ class WeatherExtractor:
                         'country': str(row['iso_country']) if row['iso_country'] else 'Unknown'
                     }
                     
-                    # Skip airports with invalid coordinates
                     if airport_info['lat'] == 0.0 and airport_info['lon'] == 0.0:
                         continue
                         
@@ -257,7 +247,6 @@ class WeatherExtractor:
                     continue
             
             
-            # Log sample airports
             if airports:
                 for airport in airports[:5]:
             
@@ -265,7 +254,6 @@ class WeatherExtractor:
             
         except Exception as e:
             logger.error(f"❌ Failed to load airports from BigQuery: {e}")
-            # Fallback to a small set of major airports for testing
             return self.get_fallback_airports()
     
     def get_fallback_airports(self) -> List[Dict]:
@@ -280,7 +268,7 @@ class WeatherExtractor:
         return airports
     
     def create_weather_schema(self) -> StructType:
-        """Define the schema for weather data using Current Weather API 2.5 structure"""
+        """Define the schema for weather data"""
         return StructType([
             StructField("airport_iata_code", StringType(), False),
             StructField("airport_icao_code", StringType(), True),
@@ -314,14 +302,12 @@ class WeatherExtractor:
     def extract_and_process_weather_data(self) -> None:
         """Main method to extract and process weather data"""
         
-        # Get airports from BigQuery
         airports = self.get_airports_from_bigquery()
         
         if not airports:
             logger.error("❌ No airports loaded - cannot proceed")
             return
         
-        # Extract weather data for each airport
         weather_data_list = []
         successful_extractions = 0
         failed_extractions = 0
@@ -342,29 +328,24 @@ class WeatherExtractor:
                 failed_extractions += 1
                 logger.error(f"❌ Error extracting weather for {airport_code}: {e}")
         
-        # Summary
         
         if not weather_data_list:
             logger.error("❌ No weather data extracted - cannot proceed")
             return
         
-        # Create DataFrame
         schema = self.create_weather_schema()
         df = self.spark.createDataFrame(weather_data_list, schema)
         
-        # Add partition column for better BigQuery performance
         df = df.withColumn("extraction_date", col("extraction_timestamp").cast("date"))
         
         record_count = df.count()
         
-        # Write to BigQuery
         self.write_to_bigquery(df)
         
     
     def write_to_bigquery(self, df) -> None:
         """Write DataFrame to BigQuery"""
         try:
-            # Configure BigQuery write
             df.write \
                 .format("bigquery") \
                 .option("table", f"{self.project_id}.{self.dataset_id}.{self.table_id}") \

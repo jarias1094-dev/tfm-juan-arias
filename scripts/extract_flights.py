@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Flight Data Extraction Script for OpenSky Network API
-Extracts real-time flight data and stores in BigQuery
 """
 
 import os
@@ -52,7 +51,7 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"❌ Failed to load credentials from Secret Manager: {e}")
+        logger.error(f"Failed to load credentials from Secret Manager: {e}")
         raise ValueError(f"Could not load OpenSky credentials from Secret Manager: {e}")
 
 def load_credentials():
@@ -152,7 +151,6 @@ class FlightExtractor:
         try:
             url = f"{self.base_url}/states/all"
             
-            # Add OAuth2 authentication if available
             headers = {}
             if self.access_token:
                 headers['Authorization'] = f'Bearer {self.access_token}'
@@ -167,7 +165,6 @@ class FlightExtractor:
             
             flights = []
             for state in data['states']:
-                # OpenSky API returns states as arrays, we need to map them to fields
                 flight_data = self._parse_flight_state(state)
                 if flight_data:
                     flights.append(flight_data)
@@ -193,7 +190,6 @@ class FlightExtractor:
             if len(state) < 17:
                 return None
             
-            # Handle None values and convert to appropriate types
             def safe_float(value):
                 return float(value) if value is not None else None
             
@@ -224,7 +220,6 @@ class FlightExtractor:
                 'extraction_timestamp': datetime.now(timezone.utc)
             }
             
-            # Only include flights with valid position data
             if flight_data['longitude'] is not None and flight_data['latitude'] is not None:
                 return flight_data
             
@@ -236,11 +231,8 @@ class FlightExtractor:
     def get_flights_by_airport(self, airport_icao: str, radius_km: int = 200) -> Optional[List[Dict]]:
         """Get flights within radius of a specific airport"""
         try:
-            # This would require airport coordinates - for now using a simplified approach
-            # In a real implementation, you'd need to get airport coordinates first
             url = f"{self.base_url}/states/all"
             
-            # Add OAuth2 authentication if available
             headers = {}
             if self.access_token:
                 headers['Authorization'] = f'Bearer {self.access_token}'
@@ -253,12 +245,10 @@ class FlightExtractor:
             if not data.get('states'):
                 return []
             
-            # Filter flights (this is a simplified approach)
-            # In practice, you'd calculate distance from airport coordinates
             flights = []
             for state in data['states']:
                 flight_data = self._parse_flight_state(state)
-                if flight_data and flight_data['on_ground'] is False:  # Only airborne flights
+                if flight_data and flight_data['on_ground'] is False:
                     flights.append(flight_data)
             
             return flights
@@ -292,7 +282,6 @@ class FlightExtractor:
     
     def enrich_flight_data(self, df):
         """Add derived fields to flight data"""
-        # Add calculated fields
         df = df.withColumn(
             "altitude_ft", 
             when(col("baro_altitude").isNotNull(), col("baro_altitude") * 3.28084).otherwise(None)
@@ -308,7 +297,6 @@ class FlightExtractor:
             when(col("vertical_rate").isNotNull(), col("vertical_rate") * 196.85).otherwise(None)
         )
         
-        # Add flight status
         df = df.withColumn(
             "flight_status",
             when(col("on_ground") == True, "On Ground")
@@ -316,7 +304,6 @@ class FlightExtractor:
             .otherwise("Unknown")
         )
         
-        # Add data quality indicators
         df = df.withColumn(
             "has_position", 
             when((col("longitude").isNotNull()) & (col("latitude").isNotNull()), True).otherwise(False)
@@ -339,25 +326,20 @@ class FlightExtractor:
             logger.error("No flight data extracted")
             return
         
-        # Create DataFrame
         schema = self.create_flight_schema()
         df = self.spark.createDataFrame(flights_data, schema)
         
-        # Enrich the data
         df = self.enrich_flight_data(df)
         
-        # Add partition column
         df = df.withColumn("extraction_date", col("extraction_timestamp").cast("date"))
         
         
-        # Write to BigQuery
         self.write_to_bigquery(df)
         
     
     def write_to_bigquery(self, df) -> None:
         """Write DataFrame to BigQuery"""
         try:
-            # Configure BigQuery write
             df.write \
                 .format("bigquery") \
                 .option("table", f"{self.project_id}.{self.dataset_id}.{self.table_id}") \
