@@ -67,6 +67,7 @@ def load_credentials():
                 'opensky': credentials
             }
         except Exception as e:
+            logger.warning(f"No se pudieron cargar credenciales desde Secret Manager: {e}")
         
         # Respaldo a variables de entorno
         opensky_client_id = os.getenv('OPENSKY_CLIENT_ID')
@@ -115,11 +116,11 @@ class FlightExtractor:
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
             .config("spark.jars.packages", "com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.32.2") \
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-            .config("spark.executor.instances", "1") \
-            .config("spark.executor.cores", "1") \
-            .config("spark.executor.memory", "2g") \
-            .config("spark.driver.memory", "1g") \
-            .config("spark.driver.cores", "1") \
+            .config("spark.executor.instances", "2") \
+            .config("spark.executor.cores", "4") \
+            .config("spark.executor.memory", "4g") \
+            .config("spark.driver.memory", "4g") \
+            .config("spark.driver.cores", "4") \
             .getOrCreate()
         
         # Configuración de BigQuery

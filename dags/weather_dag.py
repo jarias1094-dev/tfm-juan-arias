@@ -35,7 +35,7 @@ weather_dag = DAG(
 # Obtener configuración desde Variables de Airflow
 PROJECT_ID = Variable.get("gcp_project_id", default_var="pipeline-weather-flights")
 REGION = Variable.get("gcp_region", default_var="us-central1")
-BUCKET_NAME = Variable.get("storage_bucket", default_var="graduation-pipeline-code")
+BUCKET_NAME = Variable.get("storage_bucket", default_var="tfm-pipeline-code")
 
 # Cuenta de servicio para lotes de Dataproc
 PIPELINE_SA = "svc-tfm-pipeline-executor@pipeline-weather-flights.iam.gserviceaccount.com"
@@ -45,11 +45,11 @@ BATCH_CONFIG = {
     'runtime_config': {
         'version': '1.1',
         'properties': {
-            'spark.executor.instances': '1',
-            'spark.executor.cores': '1',
-            'spark.executor.memory': '2g',
-            'spark.driver.memory': '1g',
-            'spark.driver.cores': '1'
+            'spark.executor.instances': '2',
+            'spark.executor.cores': '4',
+            'spark.executor.memory': '4g',
+            'spark.driver.memory': '4g',
+            'spark.driver.cores': '4'
         }
     },
     'environment_config': {

@@ -105,4 +105,4 @@ master_end = PythonOperator(
     dag=master_dag
 )
 
-master_start >> trigger_geography >> trigger_weather >> trigger_flights >> pipeline_validation >> master_end
+master_start >> trigger_weather >> trigger_flights >> trigger_geography >> pipeline_validation >> master_end

@@ -45,11 +45,11 @@ BATCH_CONFIG = {
     'runtime_config': {
         'version': '1.1',
         'properties': {
-            'spark.executor.instances': '1',
-            'spark.executor.cores': '1',
-            'spark.executor.memory': '2g',
-            'spark.driver.memory': '1g',
-            'spark.driver.cores': '1'
+            'spark.executor.instances': '2',
+            'spark.executor.cores': '4',
+            'spark.executor.memory': '4g',
+            'spark.driver.memory': '4g',
+            'spark.driver.cores': '4'
         }
     }
 }

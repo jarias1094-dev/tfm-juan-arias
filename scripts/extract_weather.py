@@ -62,6 +62,7 @@ def load_credentials():
                 'openweather': credentials
             }
         except Exception as e:
+            logger.warning(f"No se pudieron cargar credenciales desde Secret Manager: {e}")
         
         # Respaldo a variables de entorno
         openweather_api_key = os.getenv('OPENWEATHER_API_KEY')
@@ -107,11 +108,11 @@ class WeatherExtractor:
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
             .config("spark.jars.packages", "com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.32.2") \
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-            .config("spark.executor.instances", "1") \
-            .config("spark.executor.cores", "1") \
-            .config("spark.executor.memory", "2g") \
-            .config("spark.driver.memory", "1g") \
-            .config("spark.driver.cores", "1") \
+            .config("spark.executor.instances", "2") \
+            .config("spark.executor.cores", "4") \
+            .config("spark.executor.memory", "4g") \
+            .config("spark.driver.memory", "4g") \
+            .config("spark.driver.cores", "4") \
             .getOrCreate()
         
         # Configuración de BigQuery
@@ -128,6 +129,11 @@ class WeatherExtractor:
         lon = airport_info['lon']
         airport_code = airport_info['iata_code']
         
+        # Validar API key
+        if not self.api_key:
+            logger.error(f"API key de OpenWeatherMap no está configurada para {airport_code}")
+            return None
+        
         try:
             params = {
                 'lat': lat,
@@ -136,7 +142,13 @@ class WeatherExtractor:
                 'units': 'metric'
             }
             
-            response = requests.get(self.base_url, params=params, timeout=30)
+            # Configurar sesión con reintentos
+            session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(max_retries=3)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            
+            response = session.get(self.base_url, params=params, timeout=60)
             response.raise_for_status()
             
             data = response.json()
@@ -179,6 +191,20 @@ class WeatherExtractor:
             
             return weather_data
             
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Timeout en solicitud API para {airport_code}: {e}")
+            return None
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Error de conexión API para {airport_code}: {e}")
+            return None
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                logger.error(f"API key inválida para {airport_code}: {e}")
+            elif e.response.status_code == 429:
+                logger.error(f"Rate limit excedido para {airport_code}: {e}")
+            else:
+                logger.error(f"Error HTTP en API para {airport_code}: {e}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.error(f"Solicitud API falló para {airport_code}: {e}")
             return None
@@ -253,6 +279,7 @@ class WeatherExtractor:
             
             if airports:
                 for airport in airports[:5]:
+                    logger.info(f"Procesando aeropuerto: {airport.get('name', 'Unknown')}")
             
             return airports
             
@@ -318,6 +345,7 @@ class WeatherExtractor:
         
         for i, airport in enumerate(airports, 1):
             airport_code = airport['iata_code']
+            logger.info(f"Procesando aeropuerto {i}/{len(airports)}: {airport_code}")
             
             try:
                 weather_data = self.get_weather_data(airport)
@@ -325,12 +353,19 @@ class WeatherExtractor:
                 if weather_data:
                     weather_data_list.append(weather_data)
                     successful_extractions += 1
+                    logger.info(f"✓ Datos del clima obtenidos para {airport_code}")
                 else:
                     failed_extractions += 1
+                    logger.warning(f"✗ No se pudieron obtener datos del clima para {airport_code}")
                     
             except Exception as e:
                 failed_extractions += 1
                 logger.error(f"Error al extraer datos del clima para {airport_code}: {e}")
+            
+            # Rate limiting: pausa entre solicitudes para evitar límites de API
+            if i < len(airports):  # No pausar después del último
+                import time
+                time.sleep(1)  # 1 segundo entre solicitudes
         
         
         if not weather_data_list:

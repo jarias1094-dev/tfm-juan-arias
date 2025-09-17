@@ -110,11 +110,11 @@ class GeographyExtractor:
             .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
             .config("spark.jars.packages", "com.google.cloud.spark:spark-bigquery-with-dependencies_2.12:0.32.2") \
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-            .config("spark.executor.instances", "1") \
-            .config("spark.executor.cores", "1") \
-            .config("spark.executor.memory", "2g") \
-            .config("spark.driver.memory", "1g") \
-            .config("spark.driver.cores", "1") \
+            .config("spark.executor.instances", "2") \
+            .config("spark.executor.cores", "4") \
+            .config("spark.executor.memory", "4g") \
+            .config("spark.driver.memory", "4g") \
+            .config("spark.driver.cores", "4") \
             .getOrCreate()
         
         self.project_id = PROJECT_ID
@@ -216,7 +216,7 @@ class GeographyExtractor:
             offset = 0
             batch_size = 10
             
-            while len(all_countries) < limit and offset < 200:  # Límite superior razonable para países
+            while len(all_countries) < limit and offset < 200:
                 url = f"{self.base_url}/geo/countries"
                 params = {
                     'limit': batch_size,
@@ -389,23 +389,33 @@ class GeographyExtractor:
             return None
     
     def get_major_cities_worldwide(self) -> List[Dict]:
-        """Obtener ciudades principales de los países clave en todo el mundo"""
-        major_countries = [
-            'US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN',
-            'BR', 'CA', 'AU', 'MX', 'AR', 'RU', 'KR', 'SG', 'TH', 'MY'
-        ]
+        """Obtener ciudades principales basadas en países obtenidos dinámicamente"""
+        
+        # Get countries from API instead of hardcoded list
+        countries_data = self.get_countries(limit=15)  # Cap at 15 countries for demo
+        
+        if not countries_data:
+            # Fallback to hardcoded list only if API fails
+            logger.warning("No se pudieron obtener países desde la API, usando lista de respaldo")
+            major_countries = ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN']
+        else:
+            # Use country codes from API response
+            major_countries = [country['country_code'] for country in countries_data]
+            logger.info(f"Obteniendo ciudades para {len(major_countries)} países desde la API")
         
         all_cities = []
         
         for country_code in major_countries:
-            cities = self.get_cities_by_country(country_code, limit=20)
+            cities = self.get_cities_by_country(country_code, limit=10)  # Cap at 10 cities per country
             
             if cities:
                 all_cities.extend(cities)
+                logger.info(f"Agregadas {len(cities)} ciudades para {country_code}")
             
             import time
-            time.sleep(0.1)
+            time.sleep(0.1)  # Rate limiting
         
+        logger.info(f"Total de ciudades obtenidas: {len(all_cities)}")
         return all_cities
     
     def create_places_schema(self) -> StructType:
@@ -469,10 +479,10 @@ class GeographyExtractor:
     def extract_and_process_geography_data(self) -> None:
         """Método principal para extraer y procesar datos de geografía."""
         
-        places_limit = 100
-        countries_limit = 50
+        countries_limit = 15  # Reduced for demo
         
-        places_data = self.get_places(limit=places_limit)
+        # Use dynamic country-based approach instead of general places
+        places_data = self.get_major_cities_worldwide()
         
         if not places_data:
             logger.error("No se extrajeron datos de geografía")
