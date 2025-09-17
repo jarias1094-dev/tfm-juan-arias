@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Weather Data Extraction Script for OpenWeatherMap API
+Script de Extracción de Datos del Clima para la API de OpenWeatherMap
 """
 
 import os
@@ -16,27 +16,27 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 import google.cloud.bigquery as bigquery
 from google.cloud import storage, secretmanager
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Project configuration
+# Configuración del proyecto
 PROJECT_ID = "pipeline-weather-flights"
 DATASET_ID = "tfm_bq_dataset"
 
 def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
-    """Load OpenWeatherMap credentials from Google Secret Manager"""
+    """Cargar credenciales de OpenWeatherMap desde Google Secret Manager"""
     try:
-        # Initialize Secret Manager client
+        # Inicializar cliente de Secret Manager
         client = secretmanager.SecretManagerServiceClient()
         
-        # Secret name for OpenWeatherMap API key
+        # Nombre del secreto para la clave API de OpenWeatherMap
         api_key_secret_name = f"projects/{project_id}/secrets/OPENWEATHER_API_KEY/versions/latest"
         
-        # Get API key
+        # Obtener clave API
         response = client.access_secret_version(request={"name": api_key_secret_name})
         openweather_api_key = response.payload.data.decode("UTF-8").strip()
         
@@ -46,16 +46,16 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"Failed to load credentials from Secret Manager: {e}")
-        raise ValueError(f"Could not load OpenWeatherMap credentials from Secret Manager: {e}")
+        logger.error(f"Falló al cargar credenciales desde Secret Manager: {e}")
+        raise ValueError(f"No se pudieron cargar las credenciales de OpenWeatherMap desde Secret Manager: {e}")
 
 def load_credentials():
-    """Load credentials from Google Secret Manager or fallback to environment variables"""
+    """Cargar credenciales desde Google Secret Manager o usar variables de entorno como respaldo"""
     try:
-        # Get project ID
+        # Obtener ID del proyecto
         project_id = PROJECT_ID
         
-        # Try to load from Secret Manager first
+        # Intentar cargar desde Secret Manager primero
         try:
             credentials = load_credentials_from_secret_manager(project_id)
             return {
@@ -63,7 +63,7 @@ def load_credentials():
             }
         except Exception as e:
         
-        # Fallback to environment variables
+        # Respaldo a variables de entorno
         openweather_api_key = os.getenv('OPENWEATHER_API_KEY')
         
         if openweather_api_key:
@@ -73,7 +73,7 @@ def load_credentials():
                 }
             }
         
-        # Final fallback to local credentials file
+        # Respaldo final a archivo de credenciales local
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)
         credentials_path = os.path.join(project_dir, 'config', 'credentials.json')
@@ -83,21 +83,20 @@ def load_credentials():
                 credentials = json.load(f)
             return credentials
         
-        raise ValueError("No OpenWeatherMap credentials found in Secret Manager, environment variables, or local files")
+        raise ValueError("No se encontraron credenciales de OpenWeatherMap en Secret Manager, variables de entorno o archivos locales")
         
     except Exception as e:
-        logger.error(f"Failed to load credentials: {e}")
+        logger.error(f"Falló al cargar credenciales: {e}")
         raise
 
 class WeatherExtractor:
-    """Extract weather data from OpenWeatherMap API"""
+    """Extraer datos del clima desde la API de OpenWeatherMap"""
     
     def __init__(self):
-        # Load credentials from Secret Manager or fallback options
-        # Load credentials from Secret Manager or fallback options
+        # Cargar credenciales desde Secret Manager o opciones de respaldo
         credentials = load_credentials()
         
-        # Get OpenWeatherMap API key
+        # Obtener clave API de OpenWeatherMap
         openweather_creds = credentials.get('openweather', {})
         self.api_key = openweather_creds.get('api_key')
         
@@ -110,16 +109,16 @@ class WeatherExtractor:
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
             .getOrCreate()
         
-        # BigQuery configuration
+        # Configuración de BigQuery
         self.project_id = PROJECT_ID
         self.dataset_id = DATASET_ID
         self.table_id = 'current_weather'
         
         if not self.api_key:
-            raise ValueError("OpenWeatherMap API key is required (set in Secret Manager, environment variables, or credentials.json)")
+            raise ValueError("La llave API de OpenWeatherMap es requerida (configurar en Secret Manager, variables de entorno o credentials.json)")
     
     def get_weather_data(self, airport_info: Dict) -> Optional[Dict]:
-        """Fetch weather data for specific airport using Current Weather API 2.5 (Free)"""
+        """Obtener datos del clima para un aeropuerto específico."""
         lat = airport_info['lat']
         lon = airport_info['lon']
         airport_code = airport_info['iata_code']
@@ -153,7 +152,7 @@ class WeatherExtractor:
                 'longitude': float(lon),
                 'elevation_ft': airport_info.get('elevation_ft', None),
                 'timezone': None,
-                'timezone_offset': data.get('timezone', None),  # Timezone offset in seconds
+                'timezone_offset': data.get('timezone', None),
                 'temperature': float(main.get('temp')) if main.get('temp') is not None else None,
                 'feels_like': float(main.get('feels_like')) if main.get('feels_like') is not None else None,
                 'humidity': main.get('humidity', None),
@@ -176,17 +175,17 @@ class WeatherExtractor:
             return weather_data
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed for {airport_code}: {e}")
+            logger.error(f"Solicitud API falló para {airport_code}: {e}")
             return None
         except KeyError as e:
-            logger.error(f"Missing key in API response for {airport_code}: {e}")
+            logger.error(f"Falta clave en la respuesta de la API para {airport_code}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error for {airport_code}: {e}")
+            logger.error(f"Error inesperado para {airport_code}: {e}")
             return None
     
     def get_airports_from_bigquery(self) -> List[Dict]:
-        """Get list of airports from BigQuery airports table"""
+        """Obtener lista de aeropuertos desde la tabla de aeropuertos de BigQuery"""
         try:
             
             airports_df = self.spark.read \
@@ -219,7 +218,7 @@ class WeatherExtractor:
             try:
                 airports_data = filtered_airports_df.collect()
             except Exception as collect_error:
-                logger.error(f"❌ Error collecting airport data: {collect_error}")
+                logger.error(f"Error al recopilar datos del aeropuerto: {collect_error}")
                 airports_data = filtered_airports_df.limit(100).collect()
             
             airports = []
@@ -242,7 +241,7 @@ class WeatherExtractor:
                     airports.append(airport_info)
                     
                 except Exception as row_error:
-                    logger.error(f"❌ Error processing airport row {i}: {row_error}")
+                    logger.error(f"Error al procesar la fila del aeropuerto {i}: {row_error}")
                     logger.error(f"   Row data: {dict(row.asDict()) if hasattr(row, 'asDict') else row}")
                     continue
             
@@ -253,11 +252,11 @@ class WeatherExtractor:
             return airports
             
         except Exception as e:
-            logger.error(f"❌ Failed to load airports from BigQuery: {e}")
+            logger.error(f"Falló al cargar aeropuertos desde BigQuery: {e}")
             return self.get_fallback_airports()
     
     def get_fallback_airports(self) -> List[Dict]:
-        """Fallback list of major airports for testing when BigQuery is not available"""
+        """Lista de aeropuertos principales de respaldo para pruebas cuando BigQuery no está disponible"""
         airports = [
             {'iata_code': 'JFK', 'icao_code': 'KJFK', 'name': 'John F. Kennedy International Airport', 'lat': 40.6413, 'lon': -73.7781, 'municipality': 'New York', 'country': 'US'},
             {'iata_code': 'LAX', 'icao_code': 'KLAX', 'name': 'Los Angeles International Airport', 'lat': 33.9425, 'lon': -118.4081, 'municipality': 'Los Angeles', 'country': 'US'},
@@ -268,7 +267,7 @@ class WeatherExtractor:
         return airports
     
     def create_weather_schema(self) -> StructType:
-        """Define the schema for weather data"""
+        """Definir el esquema para los datos del clima"""
         return StructType([
             StructField("airport_iata_code", StringType(), False),
             StructField("airport_icao_code", StringType(), True),
@@ -300,12 +299,12 @@ class WeatherExtractor:
         ])
     
     def extract_and_process_weather_data(self) -> None:
-        """Main method to extract and process weather data"""
+        """Método principal para extraer y procesar datos del clima"""
         
         airports = self.get_airports_from_bigquery()
         
         if not airports:
-            logger.error("❌ No airports loaded - cannot proceed")
+            logger.error("No se cargaron aeropuertos - no se puede proceder")
             return
         
         weather_data_list = []
@@ -326,11 +325,11 @@ class WeatherExtractor:
                     
             except Exception as e:
                 failed_extractions += 1
-                logger.error(f"❌ Error extracting weather for {airport_code}: {e}")
+                logger.error(f"Error al extraer datos del clima para {airport_code}: {e}")
         
         
         if not weather_data_list:
-            logger.error("❌ No weather data extracted - cannot proceed")
+            logger.error("No se extrajeron datos del clima - no se puede proceder")
             return
         
         schema = self.create_weather_schema()
@@ -344,7 +343,7 @@ class WeatherExtractor:
         
     
     def write_to_bigquery(self, df) -> None:
-        """Write DataFrame to BigQuery"""
+        """Escribir DataFrame a BigQuery"""
         try:
             df.write \
                 .format("bigquery") \
@@ -355,10 +354,10 @@ class WeatherExtractor:
                 .mode("append") \
                 .save()
             
-            logger.info(f"Successfully wrote {df.count()} records to BigQuery")
+            logger.info(f"Se escribieron exitosamente {df.count()} registros a BigQuery")
             
         except Exception as e:
-            logger.error(f"Failed to write to BigQuery: {e}")
+            logger.error(f"Falló al escribir a BigQuery: {e}")
             raise
     
     def cleanup(self):
@@ -367,12 +366,11 @@ class WeatherExtractor:
             self.spark.stop()
 
 def main():
-    """Main execution function"""
     try:
         extractor = WeatherExtractor()
         extractor.extract_and_process_weather_data()
     except Exception as e:
-        logger.error(f"Weather extraction failed: {e}")
+        logger.error(f"Extracción de datos del clima falló: {e}")
         sys.exit(1)
     finally:
         if 'extractor' in locals():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Geography Data Extraction Script for GeoDB Cities API via RapidAPI
+Script de Extracción de Datos de Geografía para la API de GeoDB Cities vía RapidAPI
 """
 
 import os
@@ -16,28 +16,28 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 import google.cloud.bigquery as bigquery
 from google.cloud import storage, secretmanager
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Project configuration
+# Configuración del proyecto
 PROJECT_ID = "pipeline-weather-flights"
 DATASET_ID = "tfm_bq_dataset"
 
 def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
-    """Load GeoDB API credentials from Google Secret Manager"""
+    """Cargar credenciales de la API de GeoDB desde Google Secret Manager"""
     try:
-        # Initialize Secret Manager client
+        # Inicializar cliente de Secret Manager
         client = secretmanager.SecretManagerServiceClient()
         
-        # Secret name for GeoDB API key - using project name
+        # Nombre del secreto para la clave API de GeoDB - usando nombre del proyecto
         api_key_secret_name = f"projects/pipeline-weather-flights/secrets/GEODB_API_KEY/versions/latest"
         
         
-        # Get API key
+        # Obtener clave API
         response = client.access_secret_version(request={"name": api_key_secret_name})
         geodb_api_key = response.payload.data.decode("UTF-8").strip()
         
@@ -47,27 +47,27 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"Failed to load credentials from Secret Manager: {e}")
-        logger.error(f"   Make sure the secret exists: gcloud secrets create GEODB_API_KEY --data-file=-")
-        raise ValueError(f"Could not load GeoDB credentials from Secret Manager: {e}")
+        logger.error(f"Falló al cargar credenciales desde Secret Manager: {e}")
+        logger.error(f"   Asegúrate de que el secreto existe: gcloud secrets create GEODB_API_KEY --data-file=-")
+        raise ValueError(f"No se pudieron cargar las credenciales de GeoDB desde Secret Manager: {e}")
 
 def load_credentials():
-    """Load credentials from Google Secret Manager or fallback to environment variables"""
+    """Cargar credenciales desde Google Secret Manager o usar variables de entorno como respaldo"""
     try:
-        # Get project ID
+        # Obtener ID del proyecto
         project_id = PROJECT_ID
         
-        # Try to load from Secret Manager first
+        # Intentar cargar desde Secret Manager primero
         try:
             credentials = load_credentials_from_secret_manager(project_id)
             return {
                 'geodb': credentials
             }
         except Exception as e:
-            logger.error(f"Failed to load credentials from Secret Manager: {e}")
-            raise ValueError(f"Could not load GeoDB credentials from Secret Manager: {e}")
+            logger.error(f"Falló al cargar credenciales desde Secret Manager: {e}")
+            raise ValueError(f"No se pudieron cargar las credenciales de GeoDB desde Secret Manager: {e}")
         
-        # Fallback to environment variables
+        # Respaldo a variables de entorno
         geodb_api_key = os.getenv('GEODB_API_KEY')
         
         if geodb_api_key:
@@ -77,7 +77,7 @@ def load_credentials():
                 }
             }
         
-        # Final fallback to local credentials file
+        # Respaldo final a archivo de credenciales local
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)
         credentials_path = os.path.join(project_dir, 'config', 'credentials.json')
@@ -87,19 +87,19 @@ def load_credentials():
                 credentials = json.load(f)
             return credentials
         
-        raise ValueError("No GeoDB credentials found in Secret Manager, environment variables, or local files")
+        raise ValueError("No se encontraron credenciales de GeoDB en Secret Manager, variables de entorno o archivos locales")
         
     except Exception as e:
-        logger.error(f"Failed to load credentials: {e}")
+        logger.error(f"Falló al cargar credenciales: {e}")
         raise
 
 class GeographyExtractor:
-    """Extract geographical data from GeoDB Cities API via RapidAPI"""
+    """Extraer datos geográficos desde la API de GeoDB Cities vía RapidAPI"""
     
     def __init__(self):
         credentials = load_credentials()
         
-        # Get GeoDB API key
+        # Obtener clave API de GeoDB
         geodb_creds = credentials.get('geodb', {})
         self.api_key = geodb_creds.get('api_key')
         
@@ -117,25 +117,25 @@ class GeographyExtractor:
         self.table_id = 'geography_places'
         
         if not self.api_key:
-            raise ValueError("GeoDB API key is required (set in Secret Manager, environment variables, or credentials.json)")
+            raise ValueError("Se requiere clave API de GeoDB (configurar en Secret Manager, variables de entorno o credentials.json)")
     
     def get_places(self, limit: int = 500) -> Optional[List[Dict]]:
-        """Fetch places using the GeoDB Places API with rate limiting"""
+        """Obtener lugares usando la API de Lugares de GeoDB con limitación de velocidad"""
         import time
         
         try:
-            batch_size = min(10, limit)  # BASIC plan limit: 10 results max
+            batch_size = min(10, limit)  # Límite del plan BÁSICO: máximo 10 resultados
             all_places = []
             offset = 0
             
-            while len(all_places) < limit and offset < 1000:  # Reasonable upper limit
+            while len(all_places) < limit and offset < 1000:  # Límite superior razonable
                 url = f"{self.base_url}/geo/places"
                 params = {
                     'limit': batch_size,
                     'offset': offset,
                     'sort': 'population',
                     'minPopulation': 10000,
-                    'types': 'CITY'  # Focus on cities
+                    'types': 'CITY'  # Enfocarse en ciudades
                 }
                 
                 headers = {
@@ -150,9 +150,9 @@ class GeographyExtractor:
                     time.sleep(5)
                     continue
                 elif response.status_code == 403:
-                    logger.error(f"403 Forbidden - API key issue or subscription problem")
-                    logger.error(f"   Response: {response.text}")
-                    logger.error(f"   API Key length: {len(headers['X-RapidAPI-Key'])}")
+                    logger.error(f"403 Prohibido - problema con clave API o suscripción")
+                    logger.error(f"   Respuesta: {response.text}")
+                    logger.error(f"   Longitud de clave API: {len(headers['X-RapidAPI-Key'])}")
                     return None
                 elif response.status_code != 200:
                     logger.error(f"API Error {response.status_code}: {response.text}")
@@ -203,7 +203,7 @@ class GeographyExtractor:
             return None
 
     def get_countries(self, limit: int = 100) -> Optional[List[Dict]]:
-        """Fetch list of countries with pagination for BASIC plan (10 results max per request)"""
+        """Obtener lista de países con paginación para plan BÁSICO (máximo 10 resultados por solicitud)"""
         import time
         
         try:
@@ -211,7 +211,7 @@ class GeographyExtractor:
             offset = 0
             batch_size = 10
             
-            while len(all_countries) < limit and offset < 200:  # Reasonable upper limit for countries
+            while len(all_countries) < limit and offset < 200:  # Límite superior razonable para países
                 url = f"{self.base_url}/geo/countries"
                 params = {
                     'limit': batch_size,
@@ -233,7 +233,7 @@ class GeographyExtractor:
                         time.sleep(wait_time)
                         continue
                     elif response.status_code == 403:
-                        logger.error(f"403 Forbidden - API key issue")
+                        logger.error(f"403 Prohibido - problema con clave API")
                         return None
                     elif response.status_code != 200:
                         logger.error(f"API Error {response.status_code}: {response.text}")
@@ -242,7 +242,7 @@ class GeographyExtractor:
                     response.raise_for_status()
                     break
                 else:
-                    logger.error("Max retries exceeded due to rate limiting")
+                    logger.error("Máximo de reintentos excedido debido a limitación de velocidad")
                     return None
                 
                 data = response.json()
@@ -281,7 +281,7 @@ class GeographyExtractor:
             return None
     
     def get_cities_by_country(self, country_code: str, limit: int = 100) -> Optional[List[Dict]]:
-        """Fetch cities for a specific country"""
+        """Obtener ciudades para un país específico"""
         try:
             url = f"{self.base_url}/geo/cities"
             params = {
@@ -323,14 +323,14 @@ class GeographyExtractor:
             return cities
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed for country {country_code}: {e}")
+            logger.error(f"Solicitud API falló para el país {country_code}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error for country {country_code}: {e}")
+            logger.error(f"Error inesperado para el país {country_code}: {e}")
             return None
     
     def get_cities_near_coordinates(self, latitude: float, longitude: float, radius_km: int = 50, limit: int = 50) -> Optional[List[Dict]]:
-        """Fetch cities near specific coordinates"""
+        """Obtener ciudades cerca de coordenadas específicas"""
         try:
             lat_str = f"{latitude:+.4f}"
             lon_str = f"{longitude:+.4f}"
@@ -384,7 +384,7 @@ class GeographyExtractor:
             return None
     
     def get_major_cities_worldwide(self) -> List[Dict]:
-        """Get major cities from key countries worldwide"""
+        """Obtener ciudades principales de los países clave en todo el mundo"""
         major_countries = [
             'US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN',
             'BR', 'CA', 'AU', 'MX', 'AR', 'RU', 'KR', 'SG', 'TH', 'MY'
@@ -404,7 +404,7 @@ class GeographyExtractor:
         return all_cities
     
     def create_places_schema(self) -> StructType:
-        """Define the schema for places data"""
+        """Definir el esquema para los datos de lugares"""
         return StructType([
             StructField("place_id", IntegerType(), True),
             StructField("place_name", StringType(), True),
@@ -422,7 +422,7 @@ class GeographyExtractor:
         ])
     
     def create_countries_schema(self) -> StructType:
-        """Define the schema for countries data"""
+        """Definir el esquema para los datos de países"""
         return StructType([
             StructField("country_code", StringType(), True),
             StructField("country_name", StringType(), True),
@@ -432,7 +432,7 @@ class GeographyExtractor:
         ])
     
     def enrich_geography_data(self, df):
-        """Add derived fields to geography data"""
+        """Agregar campos derivados a los datos de geografía."""
         df = df.withColumn(
             "population_category",
             when(col("population").isNull(), "Unknown")
@@ -462,7 +462,7 @@ class GeographyExtractor:
         return df
     
     def extract_and_process_geography_data(self) -> None:
-        """Main method to extract and process geography data"""
+        """Método principal para extraer y procesar datos de geografía."""
         
         places_limit = 100
         countries_limit = 50
@@ -470,7 +470,7 @@ class GeographyExtractor:
         places_data = self.get_places(limit=places_limit)
         
         if not places_data:
-            logger.error("No geography data extracted")
+            logger.error("No se extrajeron datos de geografía")
             return
         
         
@@ -500,7 +500,7 @@ class GeographyExtractor:
         
     
     def write_places_to_bigquery(self, df) -> None:
-        """Write places DataFrame to BigQuery"""
+        """Escribir DataFrame de lugares a BigQuery."""
         try:
             df.write \
                 .format("bigquery") \
@@ -513,11 +513,11 @@ class GeographyExtractor:
             
             
         except Exception as e:
-            logger.error(f"Failed to write places to BigQuery: {e}")
+            logger.error(f"Falló al escribir lugares a BigQuery: {e}")
             raise
     
     def write_countries_to_bigquery(self, df) -> None:
-        """Write countries DataFrame to BigQuery"""
+        """Escribir DataFrame de países a BigQuery."""
         try:
             df.write \
                 .format("bigquery") \
@@ -530,21 +530,21 @@ class GeographyExtractor:
             
             
         except Exception as e:
-            logger.error(f"Failed to write countries to BigQuery: {e}")
+            logger.error(f"Falló al escribir los países a BigQuery: {e}")
             raise
     
     def cleanup(self):
-        """Clean up Spark session"""
+        """Limpiar sesión de Spark."""
         if self.spark:
             self.spark.stop()
 
 def main():
-    """Main execution function"""
+    """Función principal de ejecución."""
     try:
         extractor = GeographyExtractor()
         extractor.extract_and_process_geography_data()
     except Exception as e:
-        logger.error(f"Geography extraction failed: {e}")
+        logger.error(f"Extracción de geografía falló: {e}")
         sys.exit(1)
     finally:
         if 'extractor' in locals():

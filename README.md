@@ -1,81 +1,77 @@
-# Trabajo Final de Master - ETL Pipeline - Weather, Flights & Geography Data
+# Trabajo Final de Master - Pipeline ETL - Datos de Clima, Vuelos y Geografía
 
-**Author**: Juan Arias  
-**Project**: Trabajo Final de Master
-**Created**: January 2025
+**Autor**: Juan Arias  
+**Proyecto**: Trabajo Final de Master  
+**Creado**: Enero 2025
 
-## Overview
+## Descripción General
 
-This data pipeline extracts and processes data from multiple sources:
-- **Flight Data**: OpenSky Network API
-- **Weather Data**: OpenWeatherMap API  
-- **Geography Data**: GeoDB Cities API
+Este pipeline de datos extrae y procesa información de múltiples fuentes:
+- **Datos de Vuelos**: API de OpenSky Network
+- **Datos del Clima**: API de OpenWeatherMap  
+- **Datos de Geografía**: API de GeoDB Cities
 
-## Pipeline Architecture
+## Arquitectura del Pipeline
 
-The system consists of four main DAGs:
+El sistema consta de cuatro DAGs principales:
 
-### Master Pipeline (`master_pipeline_dag.py`)
-- **Schedule**: Daily at midnight UTC
-- **Purpose**: Orchestrates all data pipelines in sequence
-- **Execution Order**: Geography → Weather → Flights
-- **Features**: Simple validation and comprehensive logging
+### Pipeline Maestro (`master_pipeline_dag.py`)
+- **Programación**: Diario a medianoche UTC
+- **Propósito**: Orquesta todos los pipelines de datos en secuencia
+- **Orden de Ejecución**: Geografía → Clima → Vuelos
+- **Características**: Validación simple y logging comprensivo
 
-### Individual Data Pipelines
+### Pipelines Individuales de Datos
 
-#### Geography Pipeline (`geography_dag.py`)
-- **Schedule**: Daily
-- **Data Source**: GeoDB Cities API
-- **Output**: Places and countries data
-- **Quality Checks**: Record count validation, geographic coverage
+#### Pipeline de Geografía (`geography_dag.py`)
+- **Programación**: Diario
+- **Fuente de Datos**: API de GeoDB Cities
+- **Salida**: Datos de lugares y países
+- **Verificaciones de Calidad**: Validación de conteo de registros, cobertura geográfica
 
-#### Weather Pipeline (`weather_dag.py`)
-- **Schedule**: Daily
-- **Data Source**: OpenWeatherMap API
-- **Output**: Current weather for airports
-- **Quality Checks**: Airport coverage validation, temperature ranges
+#### Pipeline del Clima (`weather_dag.py`)
+- **Programación**: Diario
+- **Fuente de Datos**: API de OpenWeatherMap
+- **Salida**: Clima actual para aeropuertos
+- **Verificaciones de Calidad**: Validación de cobertura de aeropuertos, rangos de temperatura
 
-#### Flights Pipeline (`flights_dag.py`)
-- **Schedule**: Daily
-- **Data Source**: OpenSky Network API
-- **Output**: Current flight positions and data
-- **Quality Checks**: Minimum record count validation
+#### Pipeline de Vuelos (`flights_dag.py`)
+- **Programación**: Diario
+- **Fuente de Datos**: API de OpenSky Network
+- **Salida**: Posiciones y datos actuales de vuelos
+- **Verificaciones de Calidad**: Validación de conteo mínimo de registros
 
-## Production Deployment
+## Despliegue en Producción
 
-### Required Files for Cloud Composer:
+### Archivos Requeridos para Cloud Composer:
 
-**DAGs** (upload to `dags/` folder):
-- `master_pipeline_dag.py` - Master orchestration DAG
-- `flights_dag.py` - Flight data extraction
-- `weather_dag.py` - Weather data extraction  
-- `geography_dag.py` - Geography data extraction
+**DAGs** (subir a la carpeta `dags/`):
+- `master_pipeline_dag.py` - DAG de orquestación maestro
+- `flights_dag.py` - Extracción de datos de vuelos
+- `weather_dag.py` - Extracción de datos del clima  
+- `geography_dag.py` - Extracción de datos de geografía
 
-**Scripts** (upload to GCS bucket):
+**Scripts** (subir al bucket de GCS):
 - `scripts/extract_flights.py`
 - `scripts/extract_weather.py`
 - `scripts/extract_geography.py`
 
-**Configuration**:
-- `config/config.yaml` - Main configuration file
-- `config/production_config.yaml` - Production settings
-
-### BigQuery Tables Created:
+### Tablas de BigQuery Creadas:
 - `tfm_bq_dataset.current_flights`
 - `tfm_bq_dataset.current_weather` 
 - `tfm_bq_dataset.geography_places`
 - `tfm_bq_dataset.geography_countries`
 
-### Service Account:
+### Cuenta de Servicio:
 - `svc-tfm-pipeline-executor@pipeline-weather-flights.iam.gserviceaccount.com`
 
-## Technical Stack
+## Stack Técnico
 
-- **Orchestration**: Google Cloud Composer (Airflow)
-- **Processing**: Google Dataproc Serverless (PySpark)
-- **Storage**: Google BigQuery
-- **Secrets**: Google Secret Manager
-- **Monitoring**: Cloud Logging
-- **Version Control**: GitHub
-
+- **Orquestación**: Google Cloud Composer (Airflow)
+- **Procesamiento**: Google Dataproc Serverless (PySpark)
+- **Almacenamiento**: Google BigQuery
+- **Secretos**: Google Secret Manager
+- **Monitoreo**: Cloud Logging
+- **Control de Versiones**: GitHub
+---
 *© 2025 Juan Arias - Trabajo Final de Master*

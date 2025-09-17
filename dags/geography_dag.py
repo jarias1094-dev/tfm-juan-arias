@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Airflow DAG for Geography Data
+DAG de Airflow para Datos de Geografía
 """
 
 from datetime import datetime, timedelta
@@ -14,17 +14,17 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.dummy import DummyOperator
 import logging
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DAG Configuration
+# Configuración del DAG
 DAG_ID = 'geography_data_pipeline'
 PROJECT_ID = 'pipeline-weather-flights'
 REGION = 'us-central1'
 BUCKET_NAME = 'tfm-pipeline-code'
 
-# Default arguments for the DAG
+# Argumentos por defecto para el DAG
 default_args = {
     'owner': 'Juan Arias',
     'depends_on_past': False,
@@ -50,32 +50,32 @@ BATCH_CONFIG = {
 
 def log_pipeline_start(**context):
     """
-    Log the start of the geography pipeline execution
-    Provides visibility into when the pipeline begins processing
+    Registra el inicio de la ejecución del pipeline de geografía
+    Proporciona visibilidad sobre cuándo el pipeline comienza a procesar
     """
     execution_date = context['execution_date']
-    logger.info(f" Starting Geography Data Pipeline execution for {execution_date}")
-    logger.info(" Extracting places and regions data using GeoDB API")
+    logger.info(f"Iniciando ejecución del Pipeline de Datos de Geografía para {execution_date}")
+    logger.info("Extrayendo datos de lugares y regiones usando la API de GeoDB")
 
 def perform_geography_data_quality_check():
     """
-    Perform data quality checks on extracted geography data
-    Validates that the data extraction was successful by checking record counts
+    Realiza verificaciones de calidad de datos en los datos de geografía extraídos
+    Valida que la extracción de datos fue exitosa verificando conteos de registros
     
-    Quality checks performed:
-    - Minimum number of place records (100+)
-    - Geographic coverage validation
-    - Data completeness checks
+    Verificaciones de calidad realizadas:
+    - Número mínimo de registros de lugares (100+)
+    - Validación de cobertura geográfica
+    - Verificaciones de completitud de datos
     """
     from google.cloud import bigquery
     
-    logger.info("🔍 Performing geography data quality checks...")
+    logger.info("Realizando verificaciones de calidad de datos de geografía...")
     
     try:
-        # Initialize BigQuery client
+        # Inicializar cliente de BigQuery
         client = bigquery.Client(project=PROJECT_ID)
         
-        # Check geography_places table
+        # Verificar tabla geography_places
         places_query = f"""
         SELECT 
             COUNT(*) as total_records,
@@ -92,53 +92,53 @@ def perform_geography_data_quality_check():
         unique_countries = places_row.unique_countries
         unique_place_types = places_row.unique_place_types
         
-        logger.info(f"Geography Quality Check Results:")
-        logger.info(f"   Total place records: {total_records}")
-        logger.info(f"   Unique countries: {unique_countries}")
-        logger.info(f"   Unique place types: {unique_place_types}")
+        logger.info(f"Resultados de Verificación de Calidad de Geografía:")
+        logger.info(f"   Total de registros de lugares: {total_records}")
+        logger.info(f"   Países únicos: {unique_countries}")
+        logger.info(f"   Tipos de lugares únicos: {unique_place_types}")
         
-        # Quality check thresholds
+        # Umbrales de verificación de calidad
         if total_records < 100:
-            raise ValueError(f"Insufficient geography records: {total_records} (minimum: 100)")
+            raise ValueError(f"Registros de geografía insuficientes: {total_records} (mínimo: 100)")
         
         if unique_countries < 10:
-            raise ValueError(f"Insufficient country coverage: {unique_countries} (minimum: 10)")
+            raise ValueError(f"Cobertura de países insuficiente: {unique_countries} (mínimo: 10)")
         
-        logger.info("✅ All geography data quality checks passed!")
+        logger.info("Todas las verificaciones de calidad de datos de geografía pasaron exitosamente!")
         return "geography_quality_check_passed"
         
     except Exception as e:
-        logger.error(f"Geography data quality check failed: {e}")
+        logger.error(f"Verificación de calidad de datos de geografía falló: {e}")
         raise
 
 def log_pipeline_end(**context):
     """
-    Log the completion of the geography pipeline execution
-    Provides visibility into successful pipeline completion
+    Registra la finalización de la ejecución del pipeline de geografía
+    Proporciona visibilidad sobre la finalización exitosa del pipeline
     """
     execution_date = context['execution_date']
-    logger.info(f"🎉 Geography Data Pipeline execution completed for {execution_date}")
-    logger.info("📊 Geography data has been extracted and stored in BigQuery")
+    logger.info(f"Ejecución del Pipeline de Datos de Geografía completada para {execution_date}")
+    logger.info("Los datos de geografía han sido extraídos y almacenados en BigQuery")
 
-# Create the DAG
+# Crear el DAG
 geography_dag = DAG(
     DAG_ID,
     default_args=default_args,
-    description='Extract and process geography data using GeoDB Cities API',
+    description='Extraer y procesar datos de geografía usando la API de GeoDB Cities',
     schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
     tags=['geography', 'geodb', 'api', 'bigquery', 'dataproc']
 )
 
-# Define tasks
+# Definir tareas
 start_task = PythonOperator(
     task_id='log_pipeline_start',
     python_callable=log_pipeline_start,
     dag=geography_dag
 )
 
-# Dataproc Batch for geography extraction
+# Lote de Dataproc para extracción de geografía
 geography_batch = DataprocCreateBatchOperator(
     task_id='extract_geography_data',
     region=REGION,
@@ -159,7 +159,7 @@ geography_batch = DataprocCreateBatchOperator(
     dag=geography_dag
 )
 
-# Sensor to wait for batch completion
+# Sensor para esperar la finalización del lote
 geography_sensor = DataprocBatchSensor(
     task_id='wait_for_geography_batch',
     region=REGION,
@@ -170,14 +170,14 @@ geography_sensor = DataprocBatchSensor(
     dag=geography_dag
 )
 
-# Data quality check task
+# Tarea de verificación de calidad de datos
 data_quality_check = PythonOperator(
     task_id='geography_data_quality_check',
     python_callable=perform_geography_data_quality_check,
     dag=geography_dag
 )
 
-# End task
+# Tarea de finalización
 end_task = PythonOperator(
     task_id='log_pipeline_end',
     python_callable=log_pipeline_end,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Flight Data Extraction Script for OpenSky Network API
+Script de Extracción de Datos de Vuelos para la API de OpenSky Network
 """
 
 import os
@@ -16,32 +16,32 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 import google.cloud.bigquery as bigquery
 from google.cloud import storage, secretmanager
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Project configuration
+# Configuración del proyecto
 PROJECT_ID = "pipeline-weather-flights"
 DATASET_ID = "tfm_bq_dataset"
 
 def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
-    """Load OpenSky credentials from Google Secret Manager"""
+    """Cargar credenciales de OpenSky desde Google Secret Manager"""
     try:
-        # Initialize Secret Manager client
+        # Inicializar cliente de Secret Manager
         client = secretmanager.SecretManagerServiceClient()
         
-        # Secret names
+        # Nombres de secretos
         client_id_secret_name = f"projects/{project_id}/secrets/OPENSKY_CLIENT_ID/versions/latest"
         client_secret_secret_name = f"projects/{project_id}/secrets/OPENSKY_CLIENT_SECRET/versions/latest"
         
-        # Get client ID
+        # Obtener ID de cliente
         response = client.access_secret_version(request={"name": client_id_secret_name})
         opensky_client_id = response.payload.data.decode("UTF-8").strip()
         
-        # Get client secret
+        # Obtener secreto de cliente
         response = client.access_secret_version(request={"name": client_secret_secret_name})
         opensky_client_secret = response.payload.data.decode("UTF-8").strip()
             
@@ -51,16 +51,16 @@ def load_credentials_from_secret_manager(project_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"Failed to load credentials from Secret Manager: {e}")
-        raise ValueError(f"Could not load OpenSky credentials from Secret Manager: {e}")
+        logger.error(f"Falló al cargar credenciales desde Secret Manager: {e}")
+        raise ValueError(f"No se pudieron cargar las credenciales de OpenSky desde Secret Manager: {e}")
 
 def load_credentials():
-    """Load credentials from Google Secret Manager or fallback to environment variables"""
+    """Cargar credenciales desde Google Secret Manager o usar variables de entorno como respaldo"""
     try:
-        # Get project ID
+        # Obtener ID del proyecto
         project_id = os.getenv('GCP_PROJECT_ID', 'pipeline-weather-flights')
         
-        # Try to load from Secret Manager first
+        # Intentar cargar desde Secret Manager primero
         try:
             credentials = load_credentials_from_secret_manager(project_id)
             return {
@@ -68,7 +68,7 @@ def load_credentials():
             }
         except Exception as e:
         
-        # Fallback to environment variables
+        # Respaldo a variables de entorno
         opensky_client_id = os.getenv('OPENSKY_CLIENT_ID')
         opensky_client_secret = os.getenv('OPENSKY_CLIENT_SECRET')
         
@@ -80,7 +80,7 @@ def load_credentials():
                 }
             }
         
-        # Final fallback to local credentials file
+        # Respaldo final a archivo de credenciales local
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)
         credentials_path = os.path.join(project_dir, 'config', 'credentials.json')
@@ -90,20 +90,20 @@ def load_credentials():
                 credentials = json.load(f)
             return credentials
         
-        raise ValueError("No OpenSky credentials found in Secret Manager, environment variables, or local files")
+        raise ValueError("No se encontraron credenciales de OpenSky en Secret Manager, variables de entorno o archivos locales")
         
     except Exception as e:
-        logger.error(f"Failed to load credentials: {e}")
+        logger.error(f"Falló al cargar credenciales: {e}")
         raise
 
 class FlightExtractor:
-    """Extract flight data from OpenSky Network API"""
+    """Extraer datos de vuelos desde la API de OpenSky Network"""
     
     def __init__(self):
-        # Load credentials from JSON file or environment variables
+        # Cargar credenciales desde archivo JSON o variables de entorno
         credentials = load_credentials()
         
-        # Get OpenSky credentials (prefer JSON file over environment variables)
+        # Obtener credenciales de OpenSky (preferir archivo JSON sobre variables de entorno)
         opensky_creds = credentials.get('opensky', {})
         self.client_id = opensky_creds.get('client_id') or os.getenv('OPENSKY_CLIENT_ID')
         self.client_secret = opensky_creds.get('client_secret') or os.getenv('OPENSKY_CLIENT_SECRET')
@@ -117,18 +117,18 @@ class FlightExtractor:
             .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
             .getOrCreate()
         
-        # BigQuery configuration
+        # Configuración de BigQuery
         self.project_id = PROJECT_ID
         self.dataset_id = DATASET_ID
         self.table_id = 'current_flights'
         
-        # OAuth2 token for OpenSky API
+        # Token OAuth2 para la API de OpenSky
         self.access_token = None
         if self.client_id and self.client_secret:
             self.access_token = self._get_oauth2_token()
     
     def _get_oauth2_token(self) -> Optional[str]:
-        """Get OAuth2 access token for OpenSky API"""
+        """Obtener token de acceso OAuth2 para la API de OpenSky"""
         try:
             token_url = "https://opensky-network.org/api/oauth/token"
             data = {
@@ -147,7 +147,7 @@ class FlightExtractor:
             return None
     
     def get_all_flights(self) -> Optional[List[Dict]]:
-        """Fetch all current flights from OpenSky Network"""
+        """Obtener todos los vuelos actuales desde OpenSky Network"""
         try:
             url = f"{self.base_url}/states/all"
             
@@ -172,16 +172,16 @@ class FlightExtractor:
             return flights
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed: {e}")
+            logger.error(f"Solicitud API falló: {e}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Error inesperado: {e}")
             return None
     
     def _parse_flight_state(self, state: List) -> Optional[Dict]:
-        """Parse OpenSky flight state array into structured data"""
+        """Analizar array de estado de vuelo de OpenSky en datos estructurados"""
         try:
-            # OpenSky API state array structure:
+            # Estructura del array de estado de la API de OpenSky:
             # [0] icao24, [1] callsign, [2] origin_country, [3] time_position, 
             # [4] last_contact, [5] longitude, [6] latitude, [7] baro_altitude,
             # [8] on_ground, [9] velocity, [10] true_track, [11] vertical_rate,
@@ -229,7 +229,7 @@ class FlightExtractor:
             return None
     
     def get_flights_by_airport(self, airport_icao: str, radius_km: int = 200) -> Optional[List[Dict]]:
-        """Get flights within radius of a specific airport"""
+        """Obtener vuelos dentro de un radio de un aeropuerto específico"""
         try:
             url = f"{self.base_url}/states/all"
             
@@ -254,11 +254,11 @@ class FlightExtractor:
             return flights
             
         except Exception as e:
-            logger.error(f"Failed to get flights for airport {airport_icao}: {e}")
+            logger.error(f"Falló al obtener vuelos para el aeropuerto {airport_icao}: {e}")
             return None
     
     def create_flight_schema(self) -> StructType:
-        """Define the schema for flight data"""
+        """Definir el esquema para los datos de vuelos"""
         return StructType([
             StructField("icao24", StringType(), True),
             StructField("callsign", StringType(), True),
@@ -281,7 +281,7 @@ class FlightExtractor:
         ])
     
     def enrich_flight_data(self, df):
-        """Add derived fields to flight data"""
+        """Agregar campos derivados a los datos de vuelos"""
         df = df.withColumn(
             "altitude_ft", 
             when(col("baro_altitude").isNotNull(), col("baro_altitude") * 3.28084).otherwise(None)
@@ -317,13 +317,13 @@ class FlightExtractor:
         return df
     
     def extract_and_process_flight_data(self) -> None:
-        """Main method to extract and process flight data"""
+        """Método principal para extraer y procesar datos de vuelos"""
         
-        # Extract all flights
+        # Extraer todos los vuelos
         flights_data = self.get_all_flights()
         
         if not flights_data:
-            logger.error("No flight data extracted")
+            logger.error("No se extrajeron datos de vuelos")
             return
         
         schema = self.create_flight_schema()
@@ -338,7 +338,7 @@ class FlightExtractor:
         
     
     def write_to_bigquery(self, df) -> None:
-        """Write DataFrame to BigQuery"""
+        """Escribir DataFrame a BigQuery"""
         try:
             df.write \
                 .format("bigquery") \
@@ -349,24 +349,23 @@ class FlightExtractor:
                 .mode("append") \
                 .save()
             
-            logger.info(f"Successfully wrote {df.count()} records to BigQuery")
+            logger.info(f"Se escribieron exitosamente {df.count()} registros a BigQuery")
             
         except Exception as e:
-            logger.error(f"Failed to write to BigQuery: {e}")
+            logger.error(f"Falló al escribir a BigQuery: {e}")
             raise
     
     def cleanup(self):
-        """Clean up Spark session"""
+        """Limpiar sesión de Spark"""
         if self.spark:
             self.spark.stop()
 
 def main():
-    """Main execution function"""
     try:
         extractor = FlightExtractor()
         extractor.extract_and_process_flight_data()
     except Exception as e:
-        logger.error(f"Flight extraction failed: {e}")
+        logger.error(f"Extracción de vuelos falló: {e}")
         sys.exit(1)
     finally:
         if 'extractor' in locals():

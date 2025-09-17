@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Master DAG - Orchestrates Flights, Geography, and Weather Data Pipelines
+DAG Maestro - Orquesta los Pipelines de Datos de Vuelos, Geografía y Clima
 """
 
 from datetime import datetime, timedelta
@@ -11,15 +11,15 @@ from airflow.operators.dummy import DummyOperator
 from airflow.models import Variable
 import logging
 
-# Configure logging
+# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DAG Configuration
+# Configuración del DAG
 DAG_ID = 'master_tfm_pipeline'
 PROJECT_ID = 'pipeline-weather-flights'
 
-# Default arguments for the master DAG
+# Argumentos por defecto para el DAG maestro
 default_args = {
     'owner': 'Juan Arias',
     'depends_on_past': False,
@@ -32,31 +32,31 @@ default_args = {
 
 def log_master_pipeline_start(**context):
     """
-    Log the start of the master pipeline execution
-    Provides visibility into when the master orchestration begins
+    Registra el inicio de la ejecución del pipeline maestro
+    Proporciona visibilidad sobre cuándo comienza la orquestación maestra
     """
     execution_date = context['execution_date']
-    logger.info(f"Starting Master Pipeline execution for {execution_date}")
+    logger.info(f"Iniciando ejecución del Pipeline Maestro para {execution_date}")
 
 def log_master_pipeline_end(**context):
     """
-    Log the completion of the master pipeline execution
-    Provides visibility into successful master pipeline completion
+    Registra la finalización de la ejecución del pipeline maestro
+    Proporciona visibilidad sobre la finalización exitosa del pipeline maestro
     """
     execution_date = context['execution_date']
-    logger.info(f"Master Pipeline execution completed for {execution_date}")
+    logger.info(f"Ejecución del Pipeline Maestro completada para {execution_date}")
 
 def validate_pipeline_execution(**context):
     """
-    Validation to ensure all pipelines executed successfully
+    Validación para asegurar que todos los pipelines se ejecutaron exitosamente
     """
-    logger.info("Validating pipeline execution")
+    logger.info("Validando ejecución de pipelines")
 
-# Create the master DAG
+# Creación del DAG maestro
 master_dag = DAG(
     DAG_ID,
     default_args=default_args,
-    description='Master orchestration DAG for data pipelines (Geography, Weather, Flights)',
+    description='DAG de orquestación maestro para pipelines de datos (Geografía, Clima, Vuelos)',
     schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
