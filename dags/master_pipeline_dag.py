@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Master DAG for TFM Pipeline - Orchestrates Flights, Geography, and Weather Data Pipelines
+Master DAG - Orchestrates Flights, Geography, and Weather Data Pipelines
 """
 
 from datetime import datetime, timedelta
@@ -36,7 +36,7 @@ def log_master_pipeline_start(**context):
     Provides visibility into when the master orchestration begins
     """
     execution_date = context['execution_date']
-    logger.info(f"Starting Master TFM Pipeline execution for {execution_date}")
+    logger.info(f"Starting Master Pipeline execution for {execution_date}")
 
 def log_master_pipeline_end(**context):
     """
@@ -44,7 +44,7 @@ def log_master_pipeline_end(**context):
     Provides visibility into successful master pipeline completion
     """
     execution_date = context['execution_date']
-    logger.info(f"Master TFM Pipeline execution completed for {execution_date}")
+    logger.info(f"Master Pipeline execution completed for {execution_date}")
 
 def validate_pipeline_execution(**context):
     """
@@ -56,11 +56,11 @@ def validate_pipeline_execution(**context):
 master_dag = DAG(
     DAG_ID,
     default_args=default_args,
-    description='Master orchestration DAG for TFM data pipelines (Geography, Weather, Flights)',
+    description='Master orchestration DAG for data pipelines (Geography, Weather, Flights)',
     schedule_interval='@daily',
     catchup=False,
     max_active_runs=1,
-    tags=['master', 'orchestration', 'tfm', 'geography', 'weather', 'flights']
+    tags=['master', 'orchestration', 'geography', 'weather', 'flights']
 )
 
 master_start = PythonOperator(

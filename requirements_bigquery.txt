@@ -1,24 +1,11 @@
-# BigQuery Integration Requirements
-# Install these packages for BigQuery integration
-
-# Core Google Cloud libraries
 google-cloud-bigquery==3.13.0
 google-cloud-storage==2.10.0
 google-auth==2.23.4
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
-
-# PySpark BigQuery connector
-# Note: This is typically provided by Dataproc, but for local testing:
 pyspark==3.5.0
-
-# Additional dependencies
 pandas==2.1.4
 numpy==1.24.4
 requests==2.31.0
-
-# For service account authentication
 google-auth-service-account==0.1.0
-
-# Optional: For better error handling
 tenacity==8.2.3
