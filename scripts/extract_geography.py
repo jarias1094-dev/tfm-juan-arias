@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, current_timestamp, when, isnan, isnull
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType, BooleanType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, FloatType, TimestampType, DateType, BooleanType
 import google.cloud.bigquery as bigquery
 from google.cloud import storage, secretmanager
 
@@ -64,8 +64,7 @@ def load_credentials():
                 'geodb': credentials
             }
         except Exception as e:
-            logger.error(f"Falló al cargar credenciales desde Secret Manager: {e}")
-            raise ValueError(f"No se pudieron cargar las credenciales de GeoDB desde Secret Manager: {e}")
+            logger.warning(f"No se pudieron cargar credenciales desde Secret Manager: {e}")
         
         # Respaldo a variables de entorno
         geodb_api_key = os.getenv('GEODB_API_KEY')
@@ -149,7 +148,13 @@ class GeographyExtractor:
                 }
                 
                 
-                response = requests.get(url, params=params, headers=headers, timeout=30)
+                # Configurar sesión con reintentos
+                session = requests.Session()
+                adapter = requests.adapters.HTTPAdapter(max_retries=3)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
+                
+                response = session.get(url, params=params, headers=headers, timeout=60)
                 
                 if response.status_code == 429:
                     time.sleep(5)
@@ -182,8 +187,6 @@ class GeographyExtractor:
                         'latitude': float(place.get('latitude')) if place.get('latitude') is not None else None,
                         'longitude': float(place.get('longitude')) if place.get('longitude') is not None else None,
                         'population': place.get('population'),
-                        'elevation_meters': place.get('elevationMeters'),
-                        'timezone': place.get('timezone'),
                         'extraction_timestamp': datetime.now(timezone.utc)
                     }
                     batch_places.append(place_data)
@@ -231,7 +234,13 @@ class GeographyExtractor:
                 
                 max_retries = 3
                 for attempt in range(max_retries):
-                    response = requests.get(url, params=params, headers=headers, timeout=30)
+                    # Configurar sesión con reintentos
+                    session = requests.Session()
+                    adapter = requests.adapters.HTTPAdapter(max_retries=3)
+                    session.mount('http://', adapter)
+                    session.mount('https://', adapter)
+                    
+                    response = session.get(url, params=params, headers=headers, timeout=60)
                     
                     if response.status_code == 429:
                         wait_time = 5 * (attempt + 1)
@@ -286,52 +295,107 @@ class GeographyExtractor:
             return None
     
     def get_cities_by_country(self, country_code: str, limit: int = 100) -> Optional[List[Dict]]:
-        """Obtener ciudades para un país específico"""
         try:
-            url = f"{self.base_url}/geo/cities"
-            params = {
-                'limit': limit,
-                'offset': 0,
-                'countryIds': country_code,
-                'sort': 'population',
-                'order': 'desc'
-            }
+            url = f"{self.base_url}/geo/countries/{country_code}/places"
+            params = {'limit': limit, 'offset': 0}
             
             headers = {}
             if self.api_key:
                 headers['X-RapidAPI-Key'] = self.api_key
-                headers['X-RapidAPI-Host'] = 'geodb-free-service.wirefreethought.com'
+                headers['X-RapidAPI-Host'] = 'wft-geo-db.p.rapidapi.com'
             
-            response = requests.get(url, params=params, headers=headers, timeout=30)
+            session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(max_retries=3)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            
+            response = session.get(url, params=params, headers=headers, timeout=60)
             response.raise_for_status()
             
             data = response.json()
-            
             if not data.get('data'):
                 return []
             
             cities = []
-            for city in data['data']:
-                city_data = {
-                    'city_id': city.get('id'),
-                    'city_name': city.get('name'),
-                    'country_code': city.get('countryCode', country_code),
-                    'latitude': city.get('latitude'),
-                    'longitude': city.get('longitude'),
-                    'population': city.get('population'),
-                    'elevation_meters': city.get('elevationMeters'),
-                    'timezone': city.get('timezone'),
-                    'extraction_timestamp': datetime.now(timezone.utc)
-                }
-                cities.append(city_data)
+            for place in data['data']:
+                if place.get('type') == 'CITY':
+                    population = place.get('population', 0)
+                    latitude = place.get('latitude', 0)
+                    longitude = place.get('longitude', 0)
+                    
+                    city_data = {
+                        'place_id': place.get('id'),
+                        'place_name': place.get('name'),
+                        'place_type': place.get('type'),
+                        'country_code': country_code,
+                        'country_name': None,  # Not available in API
+                        'region': place.get('region'),
+                        'region_code': place.get('regionCode'),
+                        'latitude': float(latitude) if latitude else None,
+                        'longitude': float(longitude) if longitude else None,
+                        'population': population,
+                        'elevation_meters': None,  # Not available in API
+                        'timezone': None,  # Not available in API
+                        'extraction_timestamp': datetime.now(timezone.utc),
+                        'population_category': 'Large' if population > 1000000 else 'Medium' if population > 100000 else 'Small',
+                        'elevation_category': 'Unknown',  # Not available in API
+                        'hemisphere': 'Northern' if latitude > 0 else 'Southern' if latitude < 0 else 'Equatorial',
+                        'extraction_date': datetime.now(timezone.utc).date()
+                    }
+                    cities.append(city_data)
             
             return cities
             
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Solicitud API falló para el país {country_code}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error inesperado para el país {country_code}: {e}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                import time
+                time.sleep(30)
+                try:
+                    retry_session = requests.Session()
+                    retry_adapter = requests.adapters.HTTPAdapter(max_retries=3)
+                    retry_session.mount('http://', retry_adapter)
+                    retry_session.mount('https://', retry_adapter)
+                    
+                    response = retry_session.get(url, params=params, headers=headers, timeout=60)
+                    response.raise_for_status()
+                    data = response.json()
+                    if not data.get('data'):
+                        return []
+                    cities = []
+                    for place in data['data']:
+                        if place.get('type') == 'CITY':
+                            population = place.get('population', 0)
+                            latitude = place.get('latitude', 0)
+                            longitude = place.get('longitude', 0)
+                            
+                            city_data = {
+                                'place_id': place.get('id'),
+                                'place_name': place.get('name'),
+                                'place_type': place.get('type'),
+                                'country_code': country_code,
+                                'country_name': None,
+                                'region': place.get('region'),
+                                'region_code': place.get('regionCode'),
+                                'latitude': float(latitude) if latitude else None,
+                                'longitude': float(longitude) if longitude else None,
+                                'population': population,
+                                'elevation_meters': None,
+                                'timezone': None,
+                                'extraction_timestamp': datetime.now(timezone.utc),
+                                'population_category': 'Large' if population > 1000000 else 'Medium' if population > 100000 else 'Small',
+                                'elevation_category': 'Unknown',
+                                'hemisphere': 'Northern' if latitude > 0 else 'Southern' if latitude < 0 else 'Equatorial',
+                                'extraction_date': datetime.now(timezone.utc).date()
+                            }
+                            cities.append(city_data)
+                    return cities
+                except Exception:
+                    return None
+            elif e.response.status_code == 404:
+                return None
+            else:
+                return None
+        except Exception:
             return None
     
     def get_cities_near_coordinates(self, latitude: float, longitude: float, radius_km: int = 50, limit: int = 50) -> Optional[List[Dict]]:
@@ -353,7 +417,7 @@ class GeographyExtractor:
             headers = {}
             if self.api_key:
                 headers['X-RapidAPI-Key'] = self.api_key
-                headers['X-RapidAPI-Host'] = 'geodb-free-service.wirefreethought.com'
+                headers['X-RapidAPI-Host'] = 'wft-geo-db.p.rapidapi.com'
             
             response = requests.get(url, params=params, headers=headers, timeout=30)
             response.raise_for_status()
@@ -372,8 +436,6 @@ class GeographyExtractor:
                     'latitude': city.get('latitude'),
                     'longitude': city.get('longitude'),
                     'population': city.get('population'),
-                    'elevation_meters': city.get('elevationMeters'),
-                    'timezone': city.get('timezone'),
                     'distance_km': city.get('distance'),
                     'extraction_timestamp': datetime.now(timezone.utc)
                 }
@@ -389,33 +451,35 @@ class GeographyExtractor:
             return None
     
     def get_major_cities_worldwide(self) -> List[Dict]:
-        """Obtener ciudades principales basadas en países obtenidos dinámicamente"""
+        known_valid_countries = ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN', 'AF', 'BR', 'MX', 'CA', 'AU']
         
-        # Get countries from API instead of hardcoded list
-        countries_data = self.get_countries(limit=15)  # Cap at 15 countries for demo
+        countries_data = self.get_countries(limit=15)
         
         if not countries_data:
-            # Fallback to hardcoded list only if API fails
-            logger.warning("No se pudieron obtener países desde la API, usando lista de respaldo")
-            major_countries = ['US', 'GB', 'FR', 'DE', 'IT', 'ES', 'NL', 'JP', 'CN', 'IN']
+            major_countries = known_valid_countries[:10]
         else:
-            # Use country codes from API response
-            major_countries = [country['country_code'] for country in countries_data]
-            logger.info(f"Obteniendo ciudades para {len(major_countries)} países desde la API")
+            api_countries = [country['country_code'] for country in countries_data]
+            major_countries = [code for code in api_countries if code in known_valid_countries]
+            
+            if len(major_countries) < 10:
+                for country in known_valid_countries:
+                    if country not in major_countries:
+                        major_countries.append(country)
+                        if len(major_countries) >= 10:
+                            break
         
         all_cities = []
         
-        for country_code in major_countries:
-            cities = self.get_cities_by_country(country_code, limit=10)  # Cap at 10 cities per country
+        for i, country_code in enumerate(major_countries, 1):
+            cities = self.get_cities_by_country(country_code, limit=10)
             
             if cities:
                 all_cities.extend(cities)
-                logger.info(f"Agregadas {len(cities)} ciudades para {country_code}")
             
-            import time
-            time.sleep(0.1)  # Rate limiting
+            if i < len(major_countries):
+                import time
+                time.sleep(2)
         
-        logger.info(f"Total de ciudades obtenidas: {len(all_cities)}")
         return all_cities
     
     def create_places_schema(self) -> StructType:
@@ -428,12 +492,16 @@ class GeographyExtractor:
             StructField("country_name", StringType(), True),
             StructField("region", StringType(), True),
             StructField("region_code", StringType(), True),
-            StructField("latitude", DoubleType(), True),
-            StructField("longitude", DoubleType(), True),
+            StructField("latitude", FloatType(), True),
+            StructField("longitude", FloatType(), True),
             StructField("population", IntegerType(), True),
             StructField("elevation_meters", IntegerType(), True),
             StructField("timezone", StringType(), True),
-            StructField("extraction_timestamp", TimestampType(), False)
+            StructField("extraction_timestamp", TimestampType(), False),
+            StructField("population_category", StringType(), False),
+            StructField("elevation_category", StringType(), False),
+            StructField("hemisphere", StringType(), False),
+            StructField("extraction_date", DateType(), False)
         ])
     
     def create_countries_schema(self) -> StructType:
@@ -459,11 +527,10 @@ class GeographyExtractor:
         
         df = df.withColumn(
             "elevation_category",
-            when(col("elevation_meters").isNull(), "Unknown")
-            .when(col("elevation_meters") < 0, "Below Sea Level")
-            .when(col("elevation_meters") < 100, "Low")
-            .when(col("elevation_meters") < 500, "Medium")
-            .when(col("elevation_meters") < 1000, "High")
+            when(col("population").isNull(), "Unknown")
+            .when(col("population") < 1000, "Small")
+            .when(col("population") < 100000, "Medium")
+            .when(col("population") < 1000000, "Large")
             .otherwise("Very High")
         )
         

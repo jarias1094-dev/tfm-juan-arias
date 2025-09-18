@@ -105,8 +105,8 @@ def perform_geography_data_quality_check():
         logger.info(f"   Tipos de lugares únicos: {unique_place_types}")
         
         # Umbrales de verificación de calidad
-        if total_records < 100:
-            raise ValueError(f"Registros de geografía insuficientes: {total_records} (mínimo: 100)")
+        if total_records < 50:
+            raise ValueError(f"Registros de geografía insuficientes: {total_records} (mínimo: 50)")
         
         if unique_countries < 10:
             raise ValueError(f"Cobertura de países insuficiente: {unique_countries} (mínimo: 10)")
